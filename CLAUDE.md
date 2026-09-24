@@ -121,3 +121,16 @@ Newest last. Each entry: date, decision, reason.
   outside the shield can be damaged. Destroying all four triggers the finale.
 - 2026-09-24: Gentle auto-level (rolls toward the belt plane when you are not rolling) is on by
   default and can be switched off in settings. Reason: first-time players lose orientation in 6DOF.
+- 2026-09-24: Asset scripts run in a headless Blender process that the MCP-connected Blender spawns
+  (`blender_scripts/vw_launch.py`). Reason: the first in-session bake test crashed the shared GUI
+  Blender (depsgraph access violation during export from the add-on's timer), and that instance is
+  shared with other sessions. Isolation also removes MCP timeouts on long bakes. Logs go to
+  `test-output/blender-logs/`.
+- 2026-09-24: Playwright self-test uses chrome-headless-shell with `--use-angle=d3d11 --enable-gpu`
+  (real GPU). Pointer lock and movementX work headless, so the bot flies with real mouse events.
+- 2026-09-24: The carrier warps in about 1.3 km ahead of the player (leaning toward the belt centre),
+  broadside on, and vaporises rocks inside its shield. Reason: a fixed spawn could be 3 km away.
+- 2026-09-24: Every ship material gets a team-tinted Fresnel rim (cyan friend, red foe) via
+  `onBeforeCompile`. Reason: critic round 1 could not see enemy ships against black space.
+- 2026-09-24: Greybox critic scope: missing VFX (explosion particles, nebula, trails, bloom, shield
+  shimmer) are scheduled for M2/M3 and treated as cosmetic when judging the greybox loop.
