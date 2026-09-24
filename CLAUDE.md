@@ -1,0 +1,123 @@
+# VOID WING - project guide
+
+Part of the "5 game test" series (one-shot builds from a single meta-prompt). This folder is its own
+git repo. Writing rule for every file here: no em dashes (use commas, colons or a spaced hyphen).
+
+## Pitch
+
+VOID WING is a 3D space combat game in the browser. You fly a KV-9 Kestrel starfighter, call sign
+Void One, through the Tarsus asteroid belt with two AI wingmen. Clear three waves of Hegemony fighters
+(Razor dogfighters and Maul bombers), then the Hegemony carrier Leviathan jumps in behind an energy
+shield. Knock out its four shield generators to trigger a chain reaction that tears the carrier apart.
+Die and it is mission failed; retry from the current wave.
+
+## Run
+
+- `npm install`, then `npm run dev` (Vite dev server on http://127.0.0.1:5173).
+- `npm run build` type-checks and builds to `dist/`; `npm run preview` serves the build.
+- `npm run playtest -- --scenario win|lose|tour` runs the headless Playwright self-test
+  (screenshots and console log in `test-output/`).
+- `npm run assets` rebuilds every GLB from `blender_scripts/` with Blender in background mode
+  (set `BLENDER_PATH` if Blender is not at the default install path).
+
+URL flags for testing: `?test` exposes `window.__VW` hooks, `?god` makes the player invulnerable,
+`?phase=N` jumps to a mission phase, `?seed=N` fixes the asteroid layout, `?nosound`.
+
+## Controls
+
+| Input | Action |
+| --- | --- |
+| Mouse | Aim. The ship turns toward the aim ring; click the game to capture the mouse |
+| Left mouse | Lasers (hold) |
+| Right mouse or F | Fire a missile once the lock-on tone goes solid |
+| W / S | Throttle up / down |
+| A / D | Roll left / right |
+| Shift or Space | Boost (drains the boost meter) |
+| Tab | Cycle target |
+| Esc or P | Pause |
+
+## Stack and layout
+
+Vite + TypeScript + Three.js (WebGL2). No runtime downloads: every model is a GLB made by the
+scripts in `blender_scripts/`, textures are Blender-baked or shader-generated, all audio is Web Audio
+synthesis, fonts are open fonts bundled through npm (@fontsource).
+
+```
+src/core      renderer, input, math, pools
+src/game      entities (ships, AI, weapons, asteroids, capital ship), mission director, world
+src/render    assets loader, camera rig, sky, particles, trails, shield shader
+src/audio     synth SFX and the music sequencer
+src/ui        HUD (DOM + canvas overlay), menus and screens, styles
+src/debug     test hooks for Playwright
+blender_scripts/  one Python script per asset family (+ vw_common.py helpers)
+public/assets/    exported .glb files
+scripts/          playtest.mjs (Playwright self-test), build-assets.mjs
+docs/critic/      critic subagent reports per milestone
+screenshots/      final player-view screenshots
+```
+
+Conventions: ship local frame is -Z forward, +Y up, +X right (same as a Three.js camera).
+In Blender, ships are modelled nose toward +Y, up +Z, so the glTF export lands nose at -Z.
+1 unit = 1 metre.
+
+## Milestone plan
+
+Do them in order. After each milestone run the self-test loop below.
+
+1. [ ] Greybox: core loop playable with primitive shapes, win and lose states work.
+2. [ ] Assets: model everything in Blender via the MCP, export GLB, swap into the game.
+3. [ ] Feel: animation, camera, particles, screen shake, hit feedback, sound, music.
+4. [ ] UI: title, HUD, pause, game over and victory screens with a consistent designed look.
+5. [ ] Polish and perf: steady 60 fps on a mid-range laptop, no console errors.
+
+Done means: a first-time player can start, understand the controls, play, and reach both win and
+lose screens with no bugs; README.md with controls and how to run; `screenshots/` with 6 final
+player-view shots.
+
+### Self-test loop (after every milestone)
+
+1. `npm run playtest -- --scenario win` and `--scenario lose`: headless Chromium plays through
+   scripted input, captures screenshots from the player camera, records console output.
+2. Spawn a critic subagent that sees ONLY the screenshots and the pitch (not code, not reasoning).
+   It lists the 5 worst problems a player would notice. Save the report to `docs/critic/`.
+3. Fix them. Repeat until the critic's worst remaining issue is cosmetic.
+
+## Asset list
+
+| Asset | Script | Output |
+| --- | --- | --- |
+| KV-9 Kestrel player ship (panels, cockpit, nozzles, emissive trim) | `player_ship.py` | `kestrel.glb` |
+| Razor dogfighter | `enemy_ships.py` | `razor.glb` |
+| Maul bomber | `enemy_ships.py` | `maul.glb` |
+| Leviathan carrier (3 breakable hull sections, hardpoint empties) | `capital_ship.py` | `leviathan.glb` |
+| Shield generator | `capital_ship.py` | `generator.glb` |
+| Carrier turret | `capital_ship.py` | `turret.glb` |
+| Asteroids, 4 variants with baked procedural rock texture | `asteroids.py` | `asteroid_a..d.glb` |
+| Missile | `ordnance.py` | `missile.glb` |
+| Debris chunks (rock and hull fragments for explosions) | `ordnance.py` | `debris.glb` |
+
+## DECISIONS log
+
+Newest last. Each entry: date, decision, reason.
+
+- 2026-09-24: Repo lives at `5 game test/VoidWing` with its own git history and a private GitHub
+  repo; the parent folder's repo excludes `5 game test/` locally. Reason: separate project.
+- 2026-09-24: Blender work runs through the Blender MCP against the Blender 5.1 GUI (the MCP's
+  background tool has no BLENDER_PATH). Scripts are still standalone so `npm run assets` can
+  regenerate everything headless.
+- 2026-09-24: Flight model is "mouse aim": the mouse moves an aim direction (unbounded with pointer
+  lock), the ship turns toward it at a capped rate, the camera follows the ship. The crosshair shows
+  where the guns point; a small ring shows where you are steering. Reason: this is the scheme
+  first-time PC players pick up fastest (point where you want to go), and it avoids the overshoot of
+  a virtual-joystick scheme.
+- 2026-09-24: Laser bolts fly exactly along the gun line (they only inherit the ship's forward speed),
+  so the crosshair never lies; the lead indicator solves the intercept against target velocity.
+  Mild aim assist bends bolts onto the lead point inside a 2.5 degree cone.
+- 2026-09-24: Missile lock builds automatically while the current target stays inside the lock ring;
+  RMB or F fires once locked. One button, no hold-and-release.
+- 2026-09-24: Added two AI wingmen (Void Two, Void Three) so friend vs foe markers mean something.
+  They deal reduced damage so the player gets most kills.
+- 2026-09-24: The carrier hull is invulnerable behind its shield; only the four generators on pylons
+  outside the shield can be damaged. Destroying all four triggers the finale.
+- 2026-09-24: Gentle auto-level (rolls toward the belt plane when you are not rolling) is on by
+  default and can be switched off in settings. Reason: first-time players lose orientation in 6DOF.
