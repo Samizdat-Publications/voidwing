@@ -70,11 +70,10 @@ def wing(bm, s):
     for f in faces:
         f.material_index = PAINT
     bmesh.ops.recalc_face_normals(bm, faces=faces)
-    # Winglet angled down and out at the tip.
-    wl = vw.bm_box(bm, (0.08, 1.7, 0.75), center=(5.45 * s, -3.45, -0.62), mat_index=DARK)
+    # Winglet angled down and out at the tip: built at the origin, rotated, then moved.
+    wl = vw.bm_box(bm, (0.08, 1.7, 0.75), center=(0, 0, 0), mat_index=DARK)
     vw.bm_transform(bm, wl, rot=(0, -22 * s, 0))
-    # Keep the winglet anchored at the tip after rotating about its own centre.
-    bmesh.ops.translate(bm, verts=wl, vec=(5.45 * s - sum(v.co.x for v in wl) / len(wl), 0, 0))
+    bmesh.ops.translate(bm, verts=wl, vec=(5.5 * s, -3.45, -0.62))
 
 
 def cannon(bm, s):

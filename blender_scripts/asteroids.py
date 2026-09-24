@@ -65,8 +65,9 @@ def sculpt(v):
         if v["ridge"] > 0:
             h += v["ridge"] * (1.0 - abs(noise.noise(p * 2.2))) ** 3
         if v["facet"] > 0:
-            # Cell noise gives flat-ish facets, like a fractured chunk.
-            h += v["facet"] * (noise.cell(p * 2.6) - 0.5)
+            # Voronoi F2 - F1 is continuous but creased along cell borders: a fractured, faceted chunk.
+            dists, _pts = noise.voronoi(p * 2.4, distance_metric="DISTANCE", exponent=2.5)
+            h += v["facet"] * (min(dists[1] - dists[0], 0.6) - 0.3)
         c_amount = 0.0
         for d, r, depth in craters:
             ang = math.acos(max(-1.0, min(1.0, n.dot(d))))
@@ -126,20 +127,31 @@ def rock_material(v, name):
     vw.link(nt, tc.outputs["Object"], vor.inputs["Vector"])
     vein_mask = vw.node(nt, "ShaderNodeMapRange", (-850, -350))
     vein_mask.inputs["From Min"].default_value = 0.0
-    vein_mask.inputs["From Max"].default_value = 0.025
-    vein_mask.inputs["To Min"].default_value = 0.7
+    vein_mask.inputs["From Max"].default_value = 0.012
+    vein_mask.inputs["To Min"].default_value = 0.45
     vein_mask.inputs["To Max"].default_value = 0.0
     vw.link(nt, vor.outputs["Distance"], vein_mask.inputs["Value"])
+    # Veins only show through in scattered patches, not as a regular net.
+    patch = vw.node(nt, "ShaderNodeTexNoise", (-1100, -650))
+    patch.inputs["Scale"].default_value = 1.4
+    vw.link(nt, tc.outputs["Object"], patch.inputs["Vector"])
+    patch_mask = vw.node(nt, "ShaderNodeMapRange", (-850, -650))
+    patch_mask.inputs["From Min"].default_value = 0.55
+    patch_mask.inputs["From Max"].default_value = 0.7
+    vw.link(nt, patch.outputs["Fac"], patch_mask.inputs["Value"])
+    vein_amt = vw.node(nt, "ShaderNodeMath", (-600, -450), operation="MULTIPLY")
+    vw.link(nt, vein_mask.outputs["Result"], vein_amt.inputs[0])
+    vw.link(nt, patch_mask.outputs["Result"], vein_amt.inputs[1])
     veins = vw.Mix(nt, "MIX", (-200, 100), b=v["vein"])
-    vw.link(nt, vein_mask.outputs["Result"], veins.fac)
+    vw.link(nt, vein_amt.outputs[0], veins.fac)
     vw.link(nt, cav_mul.out, veins.a)
     # Edge wear from pointiness (Cycles).
     geo = vw.node(nt, "ShaderNodeNewGeometry", (-850, -600))
     wear = vw.node(nt, "ShaderNodeMapRange", (-600, -600))
-    wear.inputs["From Min"].default_value = 0.5
-    wear.inputs["From Max"].default_value = 0.56
+    wear.inputs["From Min"].default_value = 0.53
+    wear.inputs["From Max"].default_value = 0.6
     wear.inputs["To Min"].default_value = 0.0
-    wear.inputs["To Max"].default_value = 0.35
+    wear.inputs["To Max"].default_value = 0.16
     vw.link(nt, geo.outputs["Pointiness"], wear.inputs["Value"])
     edge = vw.Mix(nt, "SCREEN", (0, 100), b=(0.8, 0.78, 0.74))
     vw.link(nt, wear.outputs["Result"], edge.fac)
@@ -216,7 +228,8 @@ def main():
             vw.log(f"variant {v['name']}: {len(low.data.polygons)} faces")
         for i, low in enumerate(lows):
             low.location = ((i - 1.5) * 2.6, 0, 0)
-        vw.preview(b, lows, "asteroids.png", elev=20, azim=-10, size=900)
+        vw.preview(b, lows, "asteroids.png", distance=10.5, elev=18, azim=0, size=1200)
+        vw.preview(b, [lows[0]], "asteroid_a_close.png", distance=3.2, elev=25, azim=-30, size=800)
     finally:
         b.close()
 

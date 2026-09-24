@@ -33,7 +33,7 @@ export class Assets {
         // Enemies are drawn a size up for readability at dogfight range.
         const m = name === 'razor' ? greyRazor() : greyMaul();
         const wrap = new Group();
-        m.scale.setScalar(1.4);
+        m.scale.setScalar(name === 'razor' ? 1.8 : 1.7);
         wrap.add(m);
         return wrap;
       }

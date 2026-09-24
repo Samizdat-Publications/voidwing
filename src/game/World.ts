@@ -188,7 +188,7 @@ export class World {
     this.rebuildLists();
     this.missiles.update(dt, this);
     for (const m of this.missiles.list) if (!this.byId.has(m.id)) this.byId.set(m.id, m);
-    this.projectiles.update(dt, this);
+    this.projectiles.update(dt, this, camera.position);
     this.asteroids.update(dt, camera);
     this.collideShips();
     this.cleanup();

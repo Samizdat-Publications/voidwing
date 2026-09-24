@@ -14,6 +14,7 @@ export const COLORS = {
   white: 'rgba(226,238,255,0.92)',
   dim: 'rgba(170,200,230,0.45)',
   missile: '#ffffff',
+  lead: '#ffe14d',
 };
 
 export interface HudContext {
@@ -319,7 +320,7 @@ export class Hud {
       const isTarget = e === target;
       if (pr.onScreen) {
         const size = clamp((e.radius / Math.max(1, pr.depth)) * focal * 1.4, isTarget ? 16 : 9, 90);
-        const far = !isTarget && !e.objective && d > 1400;
+        const far = !isTarget && !e.objective && d > 950;
         if (far) {
           g.fillStyle = color;
           g.globalAlpha = 0.85;
@@ -337,16 +338,22 @@ export class Hud {
           this.drawBracket(pr.x, pr.y, size, color, isTarget, friend, e.objective);
         }
         if (isTarget) {
+          // Label and bars sit beside the bracket, clear of the crosshair above it.
           g.fillStyle = color;
-          g.fillText(`${e.name.toUpperCase()}  ${Math.round(d)} m`, pr.x, pr.y - size - 8);
-          this.drawMiniBars(pr.x, pr.y + size + 7, e, color);
+          g.textAlign = 'left';
+          g.fillText(e.name.toUpperCase(), pr.x + Math.max(size, 26) + 10, pr.y - 4);
+          g.globalAlpha = 0.8;
+          g.fillText(`${Math.round(d)} m`, pr.x + Math.max(size, 26) + 10, pr.y + 9);
+          g.globalAlpha = 1;
+          g.textAlign = 'center';
+          this.drawMiniBars(pr.x + Math.max(size, 26) + 10 + 17, pr.y + 15, e, color);
         } else if (e.objective) {
           g.fillStyle = color;
           g.globalAlpha = 0.9;
           g.fillText(e.name.replace('Generator', 'GEN').toUpperCase(), pr.x, pr.y - size - 7);
           g.globalAlpha = 1;
           this.drawMiniBars(pr.x, pr.y + size + 6, e, color);
-        } else if (friend && d < 700) {
+        } else if (friend && d < 400) {
           g.fillStyle = color;
           g.globalAlpha = 0.7;
           g.fillText(e.name.toUpperCase(), pr.x, pr.y - size - 6);
@@ -370,44 +377,38 @@ export class Hud {
       } else if (m.target === player) this.drawEdgeArrow(pr, COLORS.missile, true, 'MISSILE');
     }
 
-    // Lead indicator (where to shoot) and missile lock.
+    // Lead pip (where to shoot, yellow) and missile lock ring (drawn outside the bracket).
     if (target && target.alive) {
       this.project(target.position, camera, pr);
       const tx = pr.x, ty = pr.y, tOn = pr.onScreen;
-      const col = target.objective ? COLORS.objective : COLORS.foe;
+      const tSize = clamp((target.radius / Math.max(1, pr.depth)) * focal * 1.4, 16, 90);
       if (controller.hasLead && tOn) {
         this.project(controller.lead, camera, pr);
-        if (pr.onScreen && Math.hypot(pr.x - tx, pr.y - ty) > 6) {
-          g.strokeStyle = col;
-          g.globalAlpha = 0.3;
+        const off = Math.hypot(pr.x - tx, pr.y - ty);
+        if (pr.onScreen && off > 10) {
+          g.strokeStyle = COLORS.lead;
+          g.globalAlpha = 0.35;
           g.lineWidth = 1;
           g.beginPath();
           g.moveTo(tx, ty);
           g.lineTo(pr.x, pr.y);
           g.stroke();
           g.globalAlpha = 1;
-        }
-        // Skip the diamond when it would sit on the target itself (little or no lead needed).
-        if (pr.onScreen && Math.hypot(pr.x - tx, pr.y - ty) > 10) {
-          g.strokeStyle = col;
           g.lineWidth = 2;
           g.beginPath();
-          g.moveTo(pr.x, pr.y - 8);
-          g.lineTo(pr.x + 8, pr.y);
-          g.lineTo(pr.x, pr.y + 8);
-          g.lineTo(pr.x - 8, pr.y);
-          g.closePath();
+          g.arc(pr.x, pr.y, 8, 0, Math.PI * 2);
           g.stroke();
-          g.fillStyle = col;
+          g.fillStyle = COLORS.lead;
           g.beginPath();
-          g.arc(pr.x, pr.y, 2, 0, Math.PI * 2);
+          g.arc(pr.x, pr.y, 3.2, 0, Math.PI * 2);
           g.fill();
         }
       }
       if (tOn && (controller.inLockCone || controller.lockProgress > 0)) {
         const p = controller.lockProgress;
-        const r = 44 - p * 22;
-        g.strokeStyle = controller.locked ? COLORS.foe : 'rgba(255,90,100,0.8)';
+        const rMin = Math.max(tSize * 1.25, 26);
+        const r = rMin + (1 - p) * 26;
+        g.strokeStyle = controller.locked ? COLORS.foe : 'rgba(255,90,100,0.75)';
         g.lineWidth = controller.locked ? 2.5 : 1.5;
         g.save();
         g.translate(tx, ty);
@@ -424,11 +425,6 @@ export class Hud {
         }
         g.stroke();
         g.restore();
-        if (controller.locked) {
-          g.font = '700 12px "Chakra Petch", system-ui, sans-serif';
-          g.fillStyle = COLORS.foe;
-          g.fillText('LOCKED - FIRE MISSILE', tx, ty - r * 1.42 - 20);
-        }
       }
     }
 
@@ -463,11 +459,15 @@ export class Hud {
       _q.copy(player.quaternion).invert();
       _v.copy(this.damageDir).sub(player.position).applyQuaternion(_q);
       const ang = Math.atan2(-_v.y, _v.x);
-      g.strokeStyle = `rgba(255,50,60,${this.damageFlash * 0.55})`;
-      g.lineWidth = 16;
-      g.beginPath();
-      g.ellipse(this.w / 2, this.h / 2, this.w / 2 - 12, this.h / 2 - 12, 0, ang - 0.3, ang + 0.3);
-      g.stroke();
+      // Soft red glow pooled against the screen edge on the side the hit came from.
+      const ex = this.w / 2 + Math.cos(ang) * this.w * 0.5;
+      const ey = this.h / 2 + Math.sin(ang) * this.h * 0.5;
+      const rad = Math.min(this.w, this.h) * 0.45;
+      const grad = g.createRadialGradient(ex, ey, 0, ex, ey, rad);
+      grad.addColorStop(0, `rgba(255,40,50,${this.damageFlash * 0.42})`);
+      grad.addColorStop(1, 'rgba(255,40,50,0)');
+      g.fillStyle = grad;
+      g.fillRect(ex - rad, ey - rad, rad * 2, rad * 2);
     }
 
     this.drawRadar(ctx);
@@ -554,30 +554,38 @@ export class Hud {
     let dx = pr.x - cx, dy = pr.y - cy;
     if (pr.behind && Math.abs(dx) < 1 && Math.abs(dy) < 1) dy = 1;
     const ang = Math.atan2(dy, dx);
-    const rx = this.w / 2 - 46, ry = this.h / 2 - 46;
-    // Place on an ellipse inside the screen edge.
+    // Ride an ellipse inside the screen edge; it is squashed vertically so arrows stay clear
+    // of the corner panels.
+    const rx = this.w / 2 - 70, ry = this.h / 2 - 110;
     const t = 1 / Math.sqrt((Math.cos(ang) / rx) ** 2 + (Math.sin(ang) / ry) ** 2);
-    const x = cx + Math.cos(ang) * t, y = cy + Math.sin(ang) * t;
-    const s = big ? 13 : 9;
+    const x = cx + Math.cos(ang) * t, y = cy - 10 + Math.sin(ang) * t;
+    const s = big ? 17 : 12;
     g.save();
     g.translate(x, y);
     g.rotate(ang);
-    g.fillStyle = color;
-    g.globalAlpha = big ? 1 : 0.8;
     g.beginPath();
     g.moveTo(s, 0);
     g.lineTo(-s * 0.7, s * 0.75);
-    g.lineTo(-s * 0.35, 0);
+    g.lineTo(-s * 0.3, 0);
     g.lineTo(-s * 0.7, -s * 0.75);
     g.closePath();
+    g.lineWidth = 3;
+    g.strokeStyle = 'rgba(0,0,0,0.75)';
+    g.stroke();
+    g.fillStyle = color;
+    g.globalAlpha = big ? 1 : 0.9;
     g.fill();
     g.restore();
     g.globalAlpha = 1;
     if (label) {
-      g.font = '600 11px "Chakra Petch", system-ui, sans-serif';
-      g.fillStyle = color;
+      g.font = '700 12px "Chakra Petch", system-ui, sans-serif';
       g.textAlign = 'center';
-      g.fillText(label, x - Math.cos(ang) * 26, y - Math.sin(ang) * 26 + 4);
+      const lx = x - Math.cos(ang) * 30, ly = y - Math.sin(ang) * 30 + 4;
+      g.lineWidth = 3;
+      g.strokeStyle = 'rgba(0,0,0,0.75)';
+      g.strokeText(label, lx, ly);
+      g.fillStyle = color;
+      g.fillText(label, lx, ly);
     }
   }
 
@@ -642,7 +650,8 @@ export class Hud {
       if (!s.alive || s === player) continue;
       blip(s.position, s.team === 'player' ? COLORS.friend : COLORS.foe, s === player.target ? 3.4 : 2.4, 'dot');
     }
-    for (const m of world.missiles.list) if (m.alive && m.team === 'enemy') blip(m.position, COLORS.missile, 1.8, 'dot');
+    const blink = Math.sin(this.time * 18) > 0;
+    for (const m of world.missiles.list) if (m.alive && m.team === 'enemy' && blink) blip(m.position, COLORS.missile, 3.2, 'diamond');
     g.fillStyle = COLORS.white;
     g.beginPath();
     g.moveTo(cx, cy - 5);

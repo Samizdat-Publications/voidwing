@@ -73,6 +73,7 @@ export class Mission {
   private wingmen: (Ship | null)[] = [null, null];
   private readonly unsubs: Array<() => void> = [];
   private hintedShield = false;
+  private missileTimer = 0;
 
   constructor(private readonly world: World) {
     const ev = world.events;
@@ -192,7 +193,7 @@ export class Mission {
         const next = PHASES[index + 1];
         const player = w.player;
         if (player && player.alive) {
-          player.missiles = Math.min(player.spec.missiles, player.missiles + 4);
+          player.missiles = player.spec.missiles;
           player.hull = Math.min(player.maxHull, player.hull + 30);
           player.shield = player.maxShield;
         }
@@ -204,7 +205,7 @@ export class Mission {
           this.say('Halcyon', 'Something big is jumping in. Hegemony carrier signature!', 'command', 6);
         } else {
           this.objective = 'Wave cleared';
-          this.objectiveDetail = 'Rearming: +4 missiles, hull patched';
+          this.objectiveDetail = 'Rearmed: missiles full, hull patched';
           this.showBanner('WAVE CLEARED', 'Rearming', 'good', 3);
           this.say('Void Three', 'Scope is clear. Nice shooting, lead.', 'friend');
         }
@@ -218,8 +219,8 @@ export class Mission {
         this.say('Halcyon', 'That carrier is shielded. Knock out the four generator pylons!', 'command', 7);
         break;
       case 'finale':
-        this.objective = 'Leviathan is going critical';
-        this.objectiveDetail = 'Clear the blast zone';
+        this.objective = 'Shields down';
+        this.objectiveDetail = 'Leviathan reactor chain reaction';
         this.showBanner('SHIELDS DOWN', 'Reactor chain reaction', 'good', 3);
         this.say('Void Two', 'Its reactor is going! Get clear, get clear!', 'friend', 6);
         this.onFinaleStart?.();
@@ -272,6 +273,15 @@ export class Mission {
     }
     // Keep wingmen alive between waves.
     if (p.kind === 'break' && this.phaseTime < dt * 1.5) this.spawnWingmen(false);
+    // The carrier Halcyon trickles missiles to the player during a fight.
+    if (p.kind === 'wave' || p.kind === 'capital') {
+      this.missileTimer += dt;
+      const player = w.player;
+      if (this.missileTimer >= 20 && player && player.alive) {
+        this.missileTimer = 0;
+        if (player.missiles < player.spec.missiles) player.missiles++;
+      }
+    }
   }
 
   private spawnGroup(g: WaveGroup): void {

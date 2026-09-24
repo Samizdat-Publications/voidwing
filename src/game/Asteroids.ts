@@ -256,7 +256,8 @@ export class AsteroidField {
       const dir = fxRng.unitVector(new Vector3());
       const r = a.radius * fxRng.range(0.36, 0.5);
       const pos = a.position.clone().addScaledVector(dir, a.radius * 0.5);
-      const vel = a.velocity.clone().addScaledVector(dir, fxRng.range(8, 22) * (childTier === 3 ? 1.5 : 1));
+      // Fragments drift apart slowly so the break-up reads on screen.
+      const vel = a.velocity.clone().addScaledVector(dir, fxRng.range(4, 11) * (childTier === 3 ? 1.4 : 1));
       const child = this.add(childTier, pos, r, vel);
       child.spinRate *= 2.5;
     }

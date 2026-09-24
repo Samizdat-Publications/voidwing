@@ -63,6 +63,12 @@ export class Effects {
     this.spawn(pos, size, 0.7, 0x9fd8ff);
   }
 
+  /** Rock dust cloud when an asteroid breaks up. */
+  dust(pos: Vector3, radius: number): void {
+    this.spawn(pos, radius * 1.4, 1.1, 0x8a7a66);
+    this.spawn(pos, radius * 0.7, 0.35, 0xffd6a0);
+  }
+
   spark(pos: Vector3, color = 0xffd080, size = 1.2): void {
     this.spawn(pos, size, 0.18, color);
   }

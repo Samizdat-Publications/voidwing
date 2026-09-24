@@ -114,7 +114,7 @@ export class Projectiles {
     this.owner[i] = this.owner[j];
   }
 
-  update(dt: number, world: World): void {
+  update(dt: number, world: World, cameraPos: Vector3): void {
     let i = 0;
     while (i < this.count) {
       this.life[i] -= dt;
@@ -133,7 +133,7 @@ export class Projectiles {
       this.pz[i] = _p1.z;
       i++;
     }
-    this.writeInstances();
+    this.writeInstances(cameraPos);
   }
 
   /** Test bolt i along _p0 -> _p1. Applies the hit and returns true if something was struck. */
@@ -200,12 +200,17 @@ export class Projectiles {
     return true;
   }
 
-  private writeInstances(): void {
+  private writeInstances(cameraPos: Vector3): void {
     this.counts.fill(0);
     for (let i = 0; i < this.count; i++) {
       const k = this.kind[i];
       const vis = BOLTS[KINDS[k]];
       const mesh = this.meshes[k];
+      // Bolts skimming past the camera would fill the screen as flat bars: hide or thin them.
+      const cdx = this.px[i] - cameraPos.x, cdy = this.py[i] - cameraPos.y, cdz = this.pz[i] - cameraPos.z;
+      const camDist = Math.sqrt(cdx * cdx + cdy * cdy + cdz * cdz);
+      if (camDist < 12) continue;
+      const thin = Math.min(1, Math.max(0.25, (camDist - 12) / 50));
       const n = this.counts[k]++;
       _dir.set(this.vx[i], this.vy[i], this.vz[i]);
       const speed = _dir.length();
@@ -213,7 +218,7 @@ export class Projectiles {
       _q.setFromUnitVectors(Z, _dir);
       // The bolt position is its head; the streak trails behind it.
       _pos.set(this.px[i], this.py[i], this.pz[i]).addScaledVector(_dir, -vis.length * 0.5);
-      _s.set(vis.width, vis.width, vis.length);
+      _s.set(vis.width * thin, vis.width * thin, vis.length);
       _m.compose(_pos, _q, _s);
       mesh.setMatrixAt(n, _m);
     }

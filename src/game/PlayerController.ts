@@ -113,11 +113,14 @@ export class PlayerController implements ShipController {
     if (wantsMissile && !c.fireMissile) this.missileDenied = true;
   }
 
-  private score(ship: Ship, e: Entity): number {
+  private score(ship: Ship, e: Entity, world: World): number {
     _to.subVectors(e.position, ship.position);
     const d = _to.length();
     const angle = d > 1e-3 ? _fwd.angleTo(_to.multiplyScalar(1 / d)) : 0;
-    return angle + d / 5000 + (e.objective ? -0.05 : 0);
+    let s = angle + d / 5000 + (e.objective ? -0.05 : 0);
+    // Generators hidden behind the carrier's shield from here are poor picks.
+    if (e.kind === 'generator' && world.capital.shieldActive && world.capital.segmentShieldT(ship.position, e.position) >= 0) s += 0.8;
+    return s;
   }
 
   private updateTargeting(ship: Ship, dt: number, world: World): void {
@@ -129,7 +132,7 @@ export class PlayerController implements ShipController {
     if (this.enabled && this.input.wasPressed('Tab')) {
       const sorted = hostiles
         .filter((h) => h.alive && h.position.distanceTo(ship.position) < 6000)
-        .sort((a, b) => this.score(ship, a) - this.score(ship, b));
+        .sort((a, b) => this.score(ship, a, world) - this.score(ship, b, world));
       if (sorted.length > 0) {
         const i = ship.target ? sorted.indexOf(ship.target) : -1;
         ship.target = sorted[(i + 1) % sorted.length];
@@ -141,14 +144,14 @@ export class PlayerController implements ShipController {
       let bestScore = Infinity;
       for (const h of hostiles) {
         if (!h.alive) continue;
-        const s = this.score(ship, h);
+        const s = this.score(ship, h, world);
         if (s < bestScore) {
           bestScore = s;
           best = h;
         }
       }
       // Hysteresis: only switch for a clearly better candidate, and never while locked.
-      if (!ship.target || (best && best !== ship.target && !this.locked && bestScore < this.score(ship, ship.target) - 0.2)) {
+      if (!ship.target || (best && best !== ship.target && !this.locked && bestScore < this.score(ship, ship.target, world) - 0.2)) {
         ship.target = best;
       }
     }

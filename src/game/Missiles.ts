@@ -13,6 +13,7 @@ const _p1 = new Vector3();
 const _hit = new Vector3();
 const _q = new Quaternion();
 const _fwd = new Vector3(0, 0, -1);
+const _avoid = new Vector3();
 
 export class Missile extends Entity {
   readonly object: Object3D;
@@ -74,6 +75,16 @@ export class Missiles {
       if (t && t.alive && m.age > 0.12) {
         leadPoint(m.position, t.position, t.velocity, Math.max(m.speed, 150), _lead);
         _desired.subVectors(_lead, m.position).normalize();
+        // Swerve around rocks in the flight path that sit before the target.
+        const look = m.speed * 0.7 + 20;
+        _p1.copy(m.position).addScaledVector(m.dir, look);
+        const rock = world.asteroids.segmentHit(m.position, _p1, 6);
+        if (rock.asteroid && rock.t * look < m.position.distanceTo(t.position)) {
+          _avoid.subVectors(m.position, rock.asteroid.position);
+          _avoid.addScaledVector(m.dir, -_avoid.dot(m.dir));
+          if (_avoid.lengthSq() < 1e-4) _avoid.set(0, 1, 0);
+          _desired.addScaledVector(_avoid.normalize(), 2.5).normalize();
+        }
         const angle = m.dir.angleTo(_desired);
         const maxTurn = spec.turnRate * dt;
         if (angle > maxTurn && angle > 1e-5) {
@@ -107,7 +118,8 @@ export class Missiles {
     let best = 2;
     const t = m.target;
     if (t && t.alive) {
-      const tt = segmentSphere(_p0, _p1, t.position, t.radius + 7);
+      // Proximity fuse.
+      const tt = segmentSphere(_p0, _p1, t.position, t.radius + 12);
       if (tt >= 0) best = tt;
     }
     for (const e of world.collidablesFor(m.team)) {

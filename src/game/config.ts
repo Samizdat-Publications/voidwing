@@ -51,14 +51,14 @@ export const SPECS: Record<ShipKind, ShipSpec> = {
     bolt: 'wing', boltSpeed: 900, boltDamage: 4.2, boltLife: 1.3, missiles: 0, score: 0,
   },
   razor: {
-    displayName: 'Razor', radius: 6.8, hull: 55, shield: 30, shieldRegen: 6, shieldDelay: 4,
+    displayName: 'Razor', radius: 8.5, hull: 55, shield: 30, shieldRegen: 6, shieldDelay: 4,
     minSpeed: 40, cruiseSpeed: 104, boostSpeed: 185, accel: 50, grip: 2.4,
     pitchRate: 1.45, yawRate: 1.3, rollRate: 2.6, angResponse: 9,
     guns: [v(-1.7, -0.2, -3.2), v(1.7, -0.2, -3.2)], fireInterval: 0.13,
     bolt: 'enemy', boltSpeed: 700, boltDamage: 3.2, boltLife: 1.6, missiles: 0, score: 100,
   },
   maul: {
-    displayName: 'Maul', radius: 13, hull: 130, shield: 60, shieldRegen: 8, shieldDelay: 5,
+    displayName: 'Maul', radius: 15.5, hull: 130, shield: 60, shieldRegen: 8, shieldDelay: 5,
     minSpeed: 30, cruiseSpeed: 86, boostSpeed: 150, accel: 30, grip: 1.8,
     pitchRate: 0.85, yawRate: 0.8, rollRate: 1.6, angResponse: 6,
     guns: [v(-3.6, -1.1, -6.5), v(3.6, -1.1, -6.5)], fireInterval: 0.32,
@@ -98,7 +98,7 @@ export const PLAYER = {
   aimAssistCone: 2.6 * DEG,
   convergence: 450,
   lockCone: 11 * DEG,
-  lockRange: 1300,
+  lockRange: 900,
   lockTime: 1.0,
   missileCooldown: 1.2,
 };
@@ -116,7 +116,7 @@ export interface MissileSpec {
 }
 
 export const MISSILES: Record<Team, MissileSpec> = {
-  player: { startSpeed: 60, maxSpeed: 420, accel: 300, turnRate: 3.6, life: 6, damage: 75, splash: 22, armTime: 0.25, hull: 999 },
+  player: { startSpeed: 60, maxSpeed: 390, accel: 300, turnRate: 4.6, life: 6, damage: 75, splash: 24, armTime: 0.25, hull: 999 },
   enemy: { startSpeed: 40, maxSpeed: 250, accel: 150, turnRate: 1.6, life: 7, damage: 22, splash: 12, armTime: 0.4, hull: 8 },
 };
 

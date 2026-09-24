@@ -63,6 +63,28 @@ export function installTestHooks(game: Game): void {
         radPerPx: PLAYER.mouseRadPerPx * game.settings.sensitivity,
       };
     },
+    /** Aim data for the nearest breakable rock in front of the player (bot showcase). */
+    asteroidAim(maxDist = 520) {
+      const w = game.world;
+      const p = w?.player;
+      const ctrl = game.controller;
+      if (!w || !p || !ctrl) return null;
+      const fwd = p.forward(new Vector3());
+      let best = null as null | { pos: Vector3; dist: number; score: number };
+      for (const a of w.asteroids.list) {
+        if (!a.alive || a.tier === 0 || a.radius > 32 || a.radius < 12) continue;
+        const d = a.position.distanceTo(p.position);
+        if (d > maxDist || d < 70) continue;
+        const ang = fwd.angleTo(_dir.copy(a.position).sub(p.position).normalize());
+        const score = ang + d / 1500;
+        if (!best || score < best.score) best = { pos: a.position.clone(), dist: d, score };
+      }
+      if (!best) return null;
+      _dir.copy(best.pos).sub(p.position).normalize();
+      localAngles(p.quaternion, _dir, _a);
+      localAngles(p.quaternion, ctrl.aimDir, _b);
+      return { dYaw: _a.yaw - _b.yaw, dPitch: _a.pitch - _b.pitch, dist: best.dist, noseErr: fwd.angleTo(_dir) };
+    },
     setGod(on: boolean) {
       game.setGod(on);
     },

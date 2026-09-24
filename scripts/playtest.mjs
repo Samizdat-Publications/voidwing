@@ -85,7 +85,7 @@ let lastPhaseKey = '';
 
 // ---------- bot ----------
 const cx = width / 2, cy = height / 2;
-const bot = { mx: cx, my: cy, firing: false, boosting: false, lastMissile: 0, passive: false };
+const bot = { mx: cx, my: cy, firing: false, boosting: false, lastMissile: 0, passive: false, showcased: false };
 async function releaseAll() {
   if (bot.firing) await page.mouse.up();
   if (bot.boosting) await page.keyboard.up('Shift');
@@ -132,6 +132,42 @@ async function botStep(st) {
   }
 }
 
+
+// Boost and asteroid-splitting showcase, run once during the first wave break.
+async function showcase(maxDist = 520, timeoutMs = 9000) {
+  await releaseAll();
+  await page.keyboard.down('Shift');
+  await sleep(1300);
+  await shot('boost');
+  await page.keyboard.up('Shift');
+  const before = (await state()).stats.asteroids;
+  const deadline = Date.now() + timeoutMs;
+  let fired = false;
+  while (Date.now() < deadline) {
+    const a = await page.evaluate((md) => window.__VW.asteroidAim(md), maxDist);
+    const st = await state();
+    if (!a || st.gameState !== 'playing') break;
+    const dx = clamp((a.dYaw / st.radPerPx) * 0.85, -150, 150);
+    const dy = clamp((-a.dPitch / st.radPerPx) * 0.85, -150, 150);
+    bot.mx += dx;
+    bot.my += dy;
+    await page.mouse.move(bot.mx, bot.my);
+    const want = a.noseErr < 0.05;
+    if (want !== fired) {
+      if (want) await page.mouse.down();
+      else await page.mouse.up();
+      fired = want;
+    }
+    if (st.stats.asteroids > before) {
+      await sleep(450);
+      await shot('asteroid_split');
+      break;
+    }
+    await sleep(35);
+  }
+  if (fired) await page.mouse.up();
+}
+
 function track(st) {
   const key = `${st.gameState}|${st.phase}|${st.wave}`;
   if (key !== lastPhaseKey) {
@@ -175,6 +211,7 @@ async function runMission({ passive = false } = {}) {
       await shotOnce('dogfight_close', st.phase === 'wave' && st.aim && st.aim.dist < 220 && st.aim.noseErr < 0.3);
       await shotOnce('missile_lock', st.locked);
       await shotOnce('wave2_bombers', st.wave === 2 && st.phase === 'wave' && ((st.target && st.target.kind === 'maul' && st.aim && st.aim.dist < 600) || inPhase > 30));
+      await shotOnce('maul_close', st.target && st.target.kind === 'maul' && st.aim && st.aim.dist < 350 && st.aim.noseErr < 0.35);
       await shotOnce('wave3_swarm', st.wave === 3 && st.phase === 'wave' && inPhase > 10);
       await shotOnce('wave_cleared', st.phase === 'break' && inPhase > 1);
       await shotOnce('capital_arrival', st.phase === 'capital' && inPhase > 3.5);
@@ -185,6 +222,11 @@ async function runMission({ passive = false } = {}) {
         criticalShot = true;
         await shot('hull_critical');
       }
+    }
+    if (!bot.showcased && !bot.passive && st.gameState === 'playing' && st.phase === 'break' && st.wave === 1 && inPhase > 0.3) {
+      bot.showcased = true;
+      await showcase();
+      continue;
     }
     if (st.gameState === 'finale') {
       await shotOnce('finale_chain', inPhase > 2.5);
@@ -228,6 +270,10 @@ try {
     await shot('pause_menu');
     await page.click('.screen.show [data-action="resume"]');
     await sleep(1500);
+    outcome = (await state()).gameState;
+  } else if (scenario === 'showcase') {
+    await sleep(1500);
+    await showcase(900, 20000);
     outcome = (await state()).gameState;
   } else if (scenario === 'win') {
     outcome = await runMission();

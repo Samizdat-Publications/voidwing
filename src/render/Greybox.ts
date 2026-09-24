@@ -13,6 +13,7 @@ import {
   SphereGeometry,
   Vector3,
 } from 'three';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng } from '../core/math';
 import type { AsteroidVariant } from '../game/Asteroids';
 import type { CapitalLayout } from '../game/CapitalShip';
@@ -175,7 +176,11 @@ export function greyAsteroidVariants(seed = 7): AsteroidVariant[] {
   const variants: AsteroidVariant[] = [];
   const colors = [0x8a8078, 0x7a746e, 0x948a7c, 0x6e6a66];
   for (let k = 0; k < 4; k++) {
-    const geo = new IcosahedronGeometry(1, 3);
+    // Merge the icosahedron's per-face vertices first so displaced neighbours stay stitched.
+    const ico = new IcosahedronGeometry(1, 3);
+    ico.deleteAttribute('normal');
+    ico.deleteAttribute('uv');
+    const geo = mergeVertices(ico);
     const pos = geo.getAttribute('position') as BufferAttribute;
     // Deform with a few random dents and bulges.
     const bumps = Array.from({ length: 9 }, () => ({ d: rng.unitVector(new Vector3()), a: rng.range(-0.35, 0.3), w: rng.range(2, 6) }));
@@ -185,7 +190,6 @@ export function greyAsteroidVariants(seed = 7): AsteroidVariant[] {
       p.fromBufferAttribute(pos, i).normalize();
       let r = 1;
       for (const b of bumps) r += b.a * Math.exp(-b.w * (1 - p.dot(b.d)));
-      r *= 1 + (rng.next() - 0.5) * 0.06;
       p.multiplyScalar(r);
       p.y *= 0.8 + k * 0.05;
       maxR = Math.max(maxR, p.length());

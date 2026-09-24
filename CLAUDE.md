@@ -64,7 +64,8 @@ In Blender, ships are modelled nose toward +Y, up +Z, so the glTF export lands n
 
 Do them in order. After each milestone run the self-test loop below.
 
-1. [ ] Greybox: core loop playable with primitive shapes, win and lose states work.
+1. [x] Greybox: core loop playable with primitive shapes, win and lose states work.
+   (4 critic rounds, reports in docs/critic/m1-round*.md; progress shots in docs/progress/m1-greybox)
 2. [ ] Assets: model everything in Blender via the MCP, export GLB, swap into the game.
 3. [ ] Feel: animation, camera, particles, screen shake, hit feedback, sound, music.
 4. [ ] UI: title, HUD, pause, game over and victory screens with a consistent designed look.
@@ -134,3 +135,13 @@ Newest last. Each entry: date, decision, reason.
   `onBeforeCompile`. Reason: critic round 1 could not see enemy ships against black space.
 - 2026-09-24: Greybox critic scope: missing VFX (explosion particles, nebula, trails, bloom, shield
   shimmer) are scheduled for M2/M3 and treated as cosmetic when judging the greybox loop.
+- 2026-09-24: The critic subagent runs from a scratchpad folder outside the repo with copied
+  screenshots. Reason: when it ran inside the repo, Claude Code auto-loaded this CLAUDE.md into it
+  (rounds 1 to 3), which breaks the "screenshots and pitch only" rule.
+- 2026-09-24: Missiles: 900 m lock range, steer around rocks, full refill at wave breaks plus one
+  missile every 20 s in combat. Reason: critic round 2 found the launcher empty most of the mission.
+- 2026-09-24: The carrier shield is a tight ellipsoid (100 x 82 x 372 m) and the generators sit on
+  tall pylons outside it, so any approach from a generator's side has a clear shot; a HUD warning
+  says when shots are being blocked. Auto-targeting skips generators the shield hides.
+- 2026-09-24: Bolts within 12 m of the camera are hidden and thinned out to 60 m (a flak bolt
+  skimming the camera filled the screen as a flat band).

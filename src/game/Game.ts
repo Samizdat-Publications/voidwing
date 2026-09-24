@@ -103,6 +103,7 @@ export class Game {
     });
     this.world.events.on('playerHit', ({ killed }) => this.hud.onPlayerHit(killed));
     this.world.events.on('shieldBlocked', () => this.hud.onShieldBlocked());
+    this.world.events.on('asteroidDestroyed', ({ position, radius }) => this.effects.dust(position, radius));
     this.world.events.on('hullHit', ({ entity, point }) => {
       if (entity === this.world.player) {
         this.hud.onPlayerDamaged(point);
