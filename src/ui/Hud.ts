@@ -105,6 +105,7 @@ export class Hud {
   private readonly targetHull: HTMLElement;
   private readonly targetView: HTMLElement;
   private readonly targetShield: HTMLElement;
+  private readonly targetShieldLabel: HTMLElement;
   private hitMarker = 0;
   private killMarker = 0;
   private damageFlash = 0;
@@ -122,6 +123,8 @@ export class Hud {
   private readonly labelRects: Rect[] = [];
   /** HUD panel rects (from the DOM) that off-screen arrows slide around. */
   private panelRects: Rect[] = [];
+  /** The radio box's rect (it fades when a marker that matters is behind it). */
+  private commsRect: Rect | null = null;
   /** Each on-screen contact's bracket rect this frame (tag placement and crowding). */
   private readonly bracketRects = new Map<Entity, Rect>();
   /** The current target's frame on screen this frame (centre and half-size), for the reticle. */
@@ -186,7 +189,7 @@ export class Hud {
     this.targetClass = el('div', 'tp-class', this.targetPanel);
     this.targetDist = el('div', 'tp-dist', this.targetPanel);
     const sr = el('div', 'tp-row', this.targetPanel);
-    el('span', 'tp-row-label', sr, 'SHIELD');
+    this.targetShieldLabel = el('span', 'tp-row-label', sr, 'SHIELD');
     const th = el('div', 'tp-bar tp-shield', sr);
     this.targetShield = el('div', 'tp-fill', th);
     const hr = el('div', 'tp-row', this.targetPanel);
@@ -358,7 +361,12 @@ export class Hud {
       const d = Math.round(t.position.distanceTo(player.position));
       this.set('tpDist', d, (v) => (this.targetDist.textContent = `${v} m`));
       this.set('tpHull', Math.round(t.hullFraction * 100), (v) => (this.targetHull.style.width = `${v}%`));
-      this.set('tpShield', Math.round(t.shieldFraction * 100), (v) => (this.targetShield.style.width = `${v}%`));
+      const gen = t.kind === 'generator';
+      const cap = world.capital;
+      const shieldFrac = gen ? (cap.shieldActive ? cap.generatorsAlive / Math.max(1, cap.generators.length) : 0) : t.shieldFraction;
+      this.set('tpShieldLabel', gen ? 'BUBBLE' : 'SHIELD', (v) => (this.targetShieldLabel.textContent = String(v)));
+      this.set('tpShield', Math.round(shieldFrac * 100), (v) => (this.targetShield.style.width = `${v}%`));
+      this.set('tpShieldBubble', gen ? 1 : 0, (v) => this.targetShield.classList.toggle('bubble', v === 1));
     }
 
     // Comms: last three live messages.
@@ -522,12 +530,17 @@ export class Hud {
           const locked = lockTag === 'LOCK';
           // The tag sits flush against the frame (above, below, right or left, whichever side is
           // clear of other ships' brackets), so it can never read as another ship's label.
-          let leadRect: Rect | null = null;
+          const avoid: Rect[] = [];
           if (controller.hasLead) {
             this.project(controller.lead, camera, _proj2);
-            if (_proj2.onScreen) leadRect = { x: _proj2.x - 10, y: _proj2.y - 10, w: 20, h: 20 };
+            if (_proj2.onScreen) avoid.push({ x: _proj2.x - 10, y: _proj2.y - 10, w: 20, h: 20 });
           }
-          const { x: tx, y: ty } = this.placeTag(e, pr.x, pr.y, ss, tw, leadRect);
+          // A bomber's double bar sits over the top of its frame.
+          if (e.kind === 'maul') {
+            const bw = Math.max(7, ss * 0.45);
+            avoid.push({ x: pr.x - bw - 3, y: pr.y - ss - 12, w: bw * 2 + 6, h: 10 });
+          }
+          const { x: tx, y: ty } = this.placeTag(e, pr.x, pr.y, ss, tw, avoid);
           if (locked) {
             g.strokeStyle = color;
             g.lineWidth = 1.2;
@@ -571,6 +584,16 @@ export class Hud {
 
     g.restore();
     this.overlapShip = overlap;
+    let behindComms = false;
+    if (this.commsRect) {
+      const c = this.commsRect;
+      for (const e of contacts) {
+        if (e !== target && !e.objective) continue;
+        this.project(e.position, camera, pr);
+        if (pr.onScreen && pr.x > c.x - 20 && pr.x < c.x + c.w + 20 && pr.y > c.y - 20 && pr.y < c.y + c.h + 20) behindComms = true;
+      }
+    }
+    this.set('commsFade', behindComms ? 1 : 0, (v) => this.comms.classList.toggle('see-through', v === 1));
 
     // Out of bounds: an amber arrow toward the combat area.
     if (controller.outOfBounds) {
@@ -612,7 +635,9 @@ export class Hud {
       if (nearest) {
         this.project(nearest.position, camera, pr);
         const ly = this.placeLabel(pr.x - 20, pr.y + 8, 40, 14);
-        if (ly !== null) this.labelText('FLAK', pr.x, ly + 11, COLORS.foe, 'center', 0.9);
+        g.font = '700 12px "Chakra Petch", system-ui, sans-serif';
+        if (ly !== null) this.labelText('FLAK', pr.x, ly + 11, COLORS.foe, 'center', 1);
+        g.font = '600 11px "Chakra Petch", system-ui, sans-serif';
       }
     }
 
@@ -783,11 +808,10 @@ export class Hud {
   }
 
   /** Where the target's tag goes: flush against its frame, on the first side clear of other brackets. */
-  private placeTag(target: Entity, x: number, y: number, ss: number, tw: number, extra: Rect | null = null): { x: number; y: number } {
+  private placeTag(target: Entity, x: number, y: number, ss: number, tw: number, extra: Rect[] = []): { x: number; y: number } {
     const own = this.bracketRects.get(target);
-    const blockers: Rect[] = [];
+    const blockers: Rect[] = [...extra];
     for (const [e, r] of this.bracketRects) if (e !== target && r !== own) blockers.push(r);
-    if (extra) blockers.push(extra);
     const cands = [
       { x: x + 10, y: y - ss - 16 },
       { x: x + 10, y: y + ss },
@@ -1035,18 +1059,27 @@ export class Hud {
     this.panelRectsAge = 0;
     const base = this.root.getBoundingClientRect();
     const rects: Rect[] = [];
-    for (const el of this.root.querySelectorAll<HTMLElement>('.hud-objective, .hud-comms, .hud-target, .hud-target-view, .hud-status, .hud-weapons')) {
-      if (el.classList.contains('hidden')) continue;
+    const visible = (el: HTMLElement) => {
+      if (el.classList.contains('hidden')) return null;
       const r = el.getBoundingClientRect();
-      if (r.width < 2 || r.height < 2) continue;
-      rects.push({ x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height });
+      return r.width < 2 || r.height < 2 ? null : r;
+    };
+    for (const el of this.root.querySelectorAll<HTMLElement>('.hud-objective, .hud-comms, .hud-status, .hud-weapons')) {
+      const r = visible(el);
+      if (r) rects.push({ x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height });
     }
-    // The target panel and the target view below it are one block (no arrow squeezes between).
-    const tp = this.targetPanel.getBoundingClientRect(), tv = this.targetView.getBoundingClientRect();
-    if (!this.targetPanel.classList.contains('hidden') && !this.targetView.classList.contains('hidden') && tp.width > 2 && tv.width > 2) {
-      const x0 = Math.min(tp.left, tv.left) - base.left, y0 = Math.min(tp.top, tv.top) - base.top;
-      rects.push({ x: x0, y: y0, w: Math.max(tp.right, tv.right) - base.left - x0, h: Math.max(tp.bottom, tv.bottom) - base.top - y0 });
+    // The target card and the view below it count as one block: no arrow squeezes between them,
+    // and no two rects overlap (the marker clip uses the even-odd rule).
+    const tp = visible(this.targetPanel), tv = visible(this.targetView);
+    const block = [tp, tv].filter((r): r is DOMRect => !!r);
+    if (block.length) {
+      const x0 = Math.min(...block.map((r) => r.left)) - base.left, y0 = Math.min(...block.map((r) => r.top)) - base.top;
+      const x1 = Math.max(...block.map((r) => r.right)) - base.left, y1 = Math.max(...block.map((r) => r.bottom)) - base.top;
+      rects.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
     }
+    this.commsRect = null;
+    const cr = this.comms.children.length ? visible(this.comms) : null;
+    if (cr) this.commsRect = { x: cr.left - base.left, y: cr.top - base.top, w: cr.width, h: cr.height };
     const rad = this.radarGeom();
     rects.push({ x: rad.cx - rad.R, y: rad.cy - rad.R, w: rad.R * 2, h: rad.R * 2 });
     this.panelRects = rects;
@@ -1056,15 +1089,14 @@ export class Hud {
   private dodgePanels(x: number, y: number, m: number): { x: number; y: number } {
     const pad = 24;
     const sideEdge = x <= m + 1 || x >= this.w - m - 1;
-    for (let pass = 0; pass < 3; pass++) {
-      const hit = this.panelRects.find((r) => x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad);
-      if (!hit) break;
-      if (sideEdge) {
-        const up = hit.y - pad, down = hit.y + hit.h + pad;
-        y = (Math.abs(y - up) < Math.abs(y - down) && up > m) || down > this.h - m ? up : down;
-      } else {
-        const left = hit.x - pad, right = hit.x + hit.w + pad;
-        x = (Math.abs(x - left) < Math.abs(x - right) && left > m) || right > this.w - m ? left : right;
+    const blocked = (px: number, py: number) => this.panelRects.some((r) => px > r.x - pad && px < r.x + r.w + pad && py > r.y - pad && py < r.y + r.h + pad);
+    if (!blocked(x, y)) return { x, y };
+    // Walk outward along the edge in both directions and take the nearest clear spot.
+    for (let d = 8; d < Math.max(this.w, this.h); d += 8) {
+      for (const s of [-1, 1]) {
+        const px = sideEdge ? x : x + s * d, py = sideEdge ? y + s * d : y;
+        if (px < m || px > this.w - m || py < m || py > this.h - m) continue;
+        if (!blocked(px, py)) return { x: px, y: py };
       }
     }
     return { x: clamp(x, m, this.w - m), y: clamp(y, m, this.h - m) };

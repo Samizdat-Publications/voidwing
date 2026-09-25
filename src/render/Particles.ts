@@ -361,6 +361,7 @@ class DebrisLayer {
         mat.color.multiplyScalar(0.6);
         mat.roughness = 0.95;
       } else {
+        mat.color.multiplyScalar(0.4);
         // Glow fades with the instance colour (hot metal cooling).
         mat.onBeforeCompile = (shader) => {
           shader.fragmentShader = shader.fragmentShader.replace(
@@ -404,6 +405,7 @@ class DebrisLayer {
     for (let k = 0; k < this.meshes.length; k++) {
       const list = this.chunks[k];
       const mesh = this.meshes[k];
+      const metal = this.metalKinds.includes(k);
       let n = 0;
       for (let i = list.length - 1; i >= 0; i--) {
         const c = list[i];
@@ -421,7 +423,8 @@ class DebrisLayer {
         this.m.compose(c.pos, c.q, this.s);
         mesh.setMatrixAt(n, this.m);
         const heat = Math.max(0.15, c.life / c.maxLife);
-        this.c.setRGB(heat, heat, heat);
+        if (metal) this.c.setRGB(heat, heat * (0.45 + 0.4 * heat), heat * (0.3 + 0.4 * heat));
+        else this.c.setRGB(heat, heat, heat);
         mesh.setColorAt(n, this.c);
         n++;
       }
@@ -835,7 +838,7 @@ export class Particles {
    */
   nova(pos: Vector3, normal: Vector3, tilt: Vector3, front: Vector3 = pos): void {
     const still = new Vector3();
-    this.add.spawn({ pos: front, vel: still, life: 1.0, size0: 50, size1: 280, color0: C(0xfff0d8, 2.2), color1: C(0xff9040, 1.0), alpha0: 1, alpha1: 0, hot: 0.8 });
+    this.add.spawn({ pos: front, vel: still, life: 1.0, size0: 50, size1: 280, color0: C(0xffd9a0, 1.6), color1: C(0xff6a20, 0.8), alpha0: 1, alpha1: 0, hot: 0.5 });
     this.add.spawn({ pos: front, vel: still, life: 3.4, size0: 160, size1: 520, color0: C(0xff9440, 1.0), color1: C(0x5a1606, 0.25), alpha0: 0.7, alpha1: 0, hot: 0.25 });
     // A dark pall of smoke that outlives the fire.
     for (let i = 0; i < 9; i++) {
