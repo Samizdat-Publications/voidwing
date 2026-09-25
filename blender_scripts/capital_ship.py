@@ -94,6 +94,69 @@ def strut(bm, p0, p1, w, mat):
     bmesh.ops.transform(bm, matrix=Matrix.Translation((p0 + p1) / 2) @ q.to_matrix().to_4x4(), verts=verts)
 
 
+def tapered_box(bm, cx, cy, z0, z1, hx0, hy0, hx1, hy1, mat):
+    """A box whose rectangle shrinks from (hx0, hy0) half-sizes at z0 to (hx1, hy1) at z1."""
+    lo = [bm.verts.new((cx + sx * hx0, cy + sy * hy0, z0)) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    hi = [bm.verts.new((cx + sx * hx1, cy + sy * hy1, z1)) for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+    faces = [bm.faces.new(list(reversed(lo))), bm.faces.new(hi)]
+    for i in range(4):
+        j = (i + 1) % 4
+        faces.append(bm.faces.new((lo[i], lo[j], hi[j], hi[i])))
+    for f in faces:
+        f.material_index = mat
+    bmesh.ops.recalc_face_normals(bm, faces=faces)
+
+
+def pylon_half_width(t):
+    """Half width (x, y) of an emitter pylon at height fraction t, for lights and fins."""
+    return 11 + (5 - 11) * t, 13 + (5.5 - 13) * t
+
+
+def emitter_pylon(bm, gx, gy, base_z, top_z):
+    """Solid tapered shield-emitter pylon: three stepped segments with collars and side fins."""
+    h = top_z - base_z
+    for t0, t1 in ((0.0, 0.42), (0.42, 0.76), (0.76, 1.0)):
+        (hx0, hy0), (hx1, hy1) = pylon_half_width(t0), pylon_half_width(t1)
+        z0, z1 = base_z + h * t0, base_z + h * t1
+        tapered_box(bm, gx, gy, z0, z1, hx0, hy0, hx1, hy1, PAINT)
+        vw.bm_box(bm, (hx1 * 2 + 3.5, hy1 * 2 + 3.5, 2.4), center=(gx, gy, z1), mat_index=DARK)  # collar
+    for s in (-1, 1):  # swept fins on both flanks of the lower two segments
+        a = bm.verts.new((gx + s * 22, gy - 1, base_z + 1))
+        b = bm.verts.new((gx + s * 10.5, gy - 1, base_z + 1))
+        c = bm.verts.new((gx + s * 6.8, gy - 1, base_z + h * 0.72))
+        a2 = bm.verts.new((gx + s * 22, gy + 1, base_z + 1))
+        b2 = bm.verts.new((gx + s * 10.5, gy + 1, base_z + 1))
+        c2 = bm.verts.new((gx + s * 6.8, gy + 1, base_z + h * 0.72))
+        faces = [bm.faces.new((a, b, c)), bm.faces.new((a2, c2, b2)), bm.faces.new((a, c, c2, a2)),
+                 bm.faces.new((b, b2, c2, c)), bm.faces.new((a, a2, b2, b))]
+        for f in faces:
+            f.material_index = ACCENT
+        bmesh.ops.recalc_face_normals(bm, faces=faces)
+    vw.bm_box(bm, (30, 34, 6), center=(gx, gy, base_z + 1), mat_index=DARK)  # footing
+    vw.bm_cylinder(bm, 9, 3, 16, center=(gx, gy, top_z + 1), axis="Z", mat_index=ACCENT)  # collar under the orb
+
+
+def boom_arm(bm, s, x0, x1, gy):
+    """Solid tapered boom from the hull flank out to a side generator, with collar ribs."""
+    n = 4
+    for k in range(n):
+        xa, xb = x0 + (x1 - x0) * k / n, x0 + (x1 - x0) * (k + 1) / n
+        ta, tb = k / n, (k + 1) / n
+        ha, hb = 7 - 3 * ta, 7 - 3 * tb
+        va, vb = 8 - 3.5 * ta, 8 - 3.5 * tb
+        # A tapered box along x: reuse tapered_box by building it on its side.
+        lo = [bm.verts.new((xa * s, gy + sy * ha, -2 + sz * va)) for sy, sz in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        hi = [bm.verts.new((xb * s, gy + sy * hb, -2 + sz * vb)) for sy, sz in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        faces = [bm.faces.new(list(reversed(lo))), bm.faces.new(hi)]
+        for i in range(4):
+            j = (i + 1) % 4
+            faces.append(bm.faces.new((lo[i], lo[j], hi[j], hi[i])))
+        for f in faces:
+            f.material_index = PAINT
+        bmesh.ops.recalc_face_normals(bm, faces=faces)
+        vw.bm_box(bm, (2.2, hb * 2 + 3, vb * 2 + 3), center=(xb * s, gy, -2), mat_index=DARK)  # rib
+
+
 def lattice_pylon(bm, gx, gy, base_z, top_z):
     """Tapered four-leg lattice pylon with cross bracing and a collar for the generator."""
     legs = []
@@ -143,7 +206,7 @@ def build_hull(bm, rng):
         bmesh.ops.recalc_face_normals(bm, faces=faces)
         # Side generator on a truss arm, with a collar under the orb.
         gx, gy, gz = GENERATORS["HP_Gen_D" if s > 0 else "HP_Gen_C"]
-        truss_arm(bm, s, 90, abs(gx) - 8, gy)
+        boom_arm(bm, s, 90, abs(gx) - 8, gy)
         vw.bm_cylinder(bm, 9, 3, 16, center=(gx, gy, -19), axis="Z", mat_index=ACCENT)
         strut(bm, (gx - 8 * s, gy, -9), (gx, gy, -18), 2.0, DARK)
         # Hangar slots along the flight-deck edge: dark recesses (their glow is in lights()).
@@ -152,7 +215,7 @@ def build_hull(bm, rng):
     # Dorsal generator pylons.
     for key in ("HP_Gen_A", "HP_Gen_B"):
         gx, gy, gz = GENERATORS[key]
-        lattice_pylon(bm, 0, gy, surface_z(0, gy) + 1, gz - 20)
+        emitter_pylon(bm, 0, gy, surface_z(0, gy) + 1, gz - 20)
     # Stepped dorsal superstructure: the carrier's spine.
     for (y0, y1, hw, h) in TIERS:
         base = min(surface_z(0, y0), surface_z(0, y1), surface_z(0, (y0 + y1) / 2))
@@ -251,8 +314,11 @@ def lights(build, rng):
         vw.bm_box(bm, (1.6, 1.6, 1.6), center=(0, y, z + 3.5))
     for key in ("HP_Gen_A", "HP_Gen_B"):
         gx, gy, gz = GENERATORS[key]
+        base = surface_z(0, gy) + 1
         for k in range(1, 5):
-            vw.bm_box(bm, (1.4, 1.4, 1.4), center=(6.6, gy, surface_z(0, gy) + (gz - 16 - surface_z(0, gy)) * k / 5))
+            t = k / 5
+            hx, _ = pylon_half_width(t)
+            vw.bm_box(bm, (1.4, 1.4, 1.4), center=(hx + 0.9, gy, base + (gz - 20 - base) * t))
     for s in (-1, 1):
         vw.bm_box(bm, (2, 2, 2), center=(92 * s, 60, -8))
         vw.bm_box(bm, (2, 2, 2), center=(92 * s, -70, -8))
@@ -271,6 +337,18 @@ def lights(build, rng):
     for s in (-1, 1):
         for y in (95, 35, -25):
             vw.bm_box(bm, (0.8, 34, 3), center=(s * 94.3, y, -8))
+    # Power conduits: glowing strips up both faces of each emitter pylon and along the booms.
+    for key in ("HP_Gen_A", "HP_Gen_B"):
+        gx, gy, gz = GENERATORS[key]
+        base, top = surface_z(0, gy) + 3, gz - 22
+        for sy in (-1, 1):
+            _, hy0 = pylon_half_width(0.02)
+            _, hy1 = pylon_half_width(0.97)
+            strut(bm, (gx, gy + sy * (hy0 + 0.35), base), (gx, gy + sy * (hy1 + 0.35), top), 1.3, 0)
+    for key in ("HP_Gen_C", "HP_Gen_D"):
+        gx, gy, gz = GENERATORS[key]
+        s = 1 if gx > 0 else -1
+        strut(bm, (92 * s, gy, 6.3), ((abs(gx) - 10) * s, gy, 2.8), 1.3, 0)
     hang = vw.obj_from_bmesh(build, "Leviathan_Hangar", bm)
     hang.data.materials.append(vw.principled("Leviathan_HangarGlow", base=(0.5, 0.25, 0.1), emission=(1.0, 0.55, 0.25), strength=5.0))
     return [win, red, eng, hang]

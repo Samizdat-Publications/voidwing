@@ -455,6 +455,12 @@ export class Hud {
     this.labelRects.push(shipRect);
     let overlap = false;
     let targetFrame: Rect | null = null;
+    // Everything world-anchored is clipped out of the HUD panels, so no marker draws across them.
+    g.save();
+    g.beginPath();
+    g.rect(0, 0, this.w, this.h);
+    for (const r of this.panelRects) g.rect(r.x, r.y, r.w, r.h);
+    g.clip('evenodd');
     for (const e of contacts) {
       const d = e.position.distanceTo(player.position);
       this.project(e.position, camera, pr);
@@ -464,9 +470,8 @@ export class Hud {
       if (pr.onScreen) {
         // Generator markers stay compact even when you are right on top of one.
         const size = clamp((e.radius * this.viewScale(e) / Math.max(1, pr.depth)) * focal * 1.15, isTarget ? 16 : d > 600 ? 7 : 9, e.objective ? 46 : 90);
-        // A marker whose bracket crosses a HUD panel is hidden with it.
-        const br = this.bracketRects.get(e);
-        if (!isTarget && (this.insidePanel(pr.x, pr.y) || (br && this.panelRects.some((r) => overlaps(r, br))))) continue;
+        // A marker whose ship sits behind a HUD panel is hidden with it (the rest is clipped at panel edges).
+        if (!isTarget && this.insidePanel(pr.x, pr.y)) continue;
         const underBanner = !!mission.banner && pr.y > this.h * 0.17 - 10 && pr.y < this.h * 0.17 + 64 && Math.abs(pr.x - this.w / 2) < this.w * 0.25;
         g.globalAlpha = underBanner ? 0.35 : 1;
         // Fade your ship only for a small marker hiding behind it, never for a target that fills the view.
@@ -564,6 +569,7 @@ export class Hud {
       }
     }
 
+    g.restore();
     this.overlapShip = overlap;
 
     // Out of bounds: an amber arrow toward the combat area.
@@ -624,7 +630,8 @@ export class Hud {
       this.project(m.position, camera, pr);
       // A missile just leaving its launcher sits on that ship's bracket: the bracket says enough.
       const onBracket = [...this.bracketRects.values()].some((r) => pr.x > r.x && pr.x < r.x + r.w && pr.y > r.y && pr.y < r.y + r.h);
-      if (pr.onScreen && !onBracket && m.position.distanceTo(player.position) < 900) {
+      const triangle = pr.onScreen && !onBracket && m.position.distanceTo(player.position) < 900;
+      if (triangle) {
         const r = 8 + Math.sin(this.time * 20) * 2;
         g.strokeStyle = COLORS.warn;
         g.lineWidth = 2;
@@ -635,7 +642,8 @@ export class Hud {
         g.closePath();
         g.stroke();
       }
-      if (m.target === player && !pr.onScreen) this.drawThreat(m.position, camera, 136, COLORS.warn, m === nearestThreat ? 'MISSILE' : '', shipRect);
+      // A missile tracking you always gets one cue: its triangle, or a chevron around the sight.
+      if (m.target === player && !triangle) this.drawThreat(m.position, camera, 136, COLORS.warn, m === nearestThreat ? 'MISSILE' : '', shipRect);
     }
 
     // Lead: a yellow diamond where to shoot, tied to the target when it sits ahead of it.

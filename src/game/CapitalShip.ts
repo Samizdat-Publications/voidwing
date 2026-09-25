@@ -1,7 +1,6 @@
 import {
   AdditiveBlending,
   Color,
-  CylinderGeometry,
   Group,
   Matrix4,
   Mesh,
@@ -68,16 +67,6 @@ export class Generator extends Entity {
     if (this.beam) this.beam.visible = false;
     this.capital.onGeneratorDestroyed(this, world);
   }
-}
-
-const _beamUp = new Vector3(0, 1, 0);
-function makeBeam(from: Vector3, to: Vector3, mat: MeshBasicMaterial): Mesh {
-  const len = from.distanceTo(to);
-  const beam = new Mesh(new CylinderGeometry(1.6, 1.6, len, 8, 1, true), mat);
-  beam.position.copy(from).add(to).multiplyScalar(0.5);
-  beam.quaternion.setFromUnitVectors(_beamUp, to.clone().sub(from).normalize());
-  beam.renderOrder = 4;
-  return beam;
 }
 
 export class Turret extends Entity {
@@ -227,10 +216,7 @@ export class CapitalShip {
       obj.position.copy(p);
       this.object.add(obj);
       const gen = new Generator(this, p.clone(), obj, i);
-      // Beam from the orb down its pylon into the hull.
-      const anchor = p.clone().multiplyScalar(0.28);
-      gen.beam = makeBeam(p, anchor, this.beamMat);
-      this.object.add(gen.beam);
+      // Power reaches the orb through glowing conduits built into the pylons and booms.
       this.generators.push(gen);
     });
     for (const t of this.layout.turrets) {

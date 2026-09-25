@@ -549,7 +549,16 @@ export class Game {
       deaths: st.deaths,
       wave: this.mission.waveNumber,
       cause: this.state === 'gameover' ? this.deathCause : '',
+      retryLabel: this.retryLabel(),
+      checkpointAtStart: this.mission.checkpoint <= 1,
     };
+  }
+
+  private retryLabel(): string {
+    const cp = PHASES[this.mission.checkpoint];
+    if (cp.kind === 'capital') return 'Retry the carrier';
+    if (cp.kind === 'wave') return `Retry wave ${(cp.wave ?? 0) + 1}`;
+    return 'Retry';
   }
 
   private setState(s: GameState): void {
@@ -741,7 +750,8 @@ export class Game {
         this.audio.ui('deny');
       }
       this.hud.update(dt, { world: w, player: p, controller: this.controller, mission: this.mission, camera: this.engine.camera });
-      this.effects.playerFadeTarget = this.hud.overlapShip ? 0.3 : 1;
+      // Your ship turns see-through for a marker behind it, but stays clearly yours.
+      this.effects.playerFadeTarget = this.hud.overlapShip ? 0.55 : 1;
     }
     this.mark('hud');
   }

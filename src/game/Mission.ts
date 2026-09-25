@@ -69,6 +69,8 @@ export class Mission {
   banner: Banner | null = null;
   readonly stats: MissionStats = { kills: 0, score: 0, startTime: 0, endTime: 0, deaths: 0, generators: 0, asteroids: 0 };
   checkpoint = 1;
+  /** The first bomber group gets a radio warning; later ones do not repeat it. */
+  private bomberWarned = false;
   onVictory: (() => void) | null = null;
   onFinaleStart: (() => void) | null = null;
   private wingmen: (Ship | null)[] = [null, null];
@@ -126,6 +128,7 @@ export class Mission {
     this.stats.startTime = this.world.time;
     this.stats.endTime = 0;
     this.messages.length = 0;
+    this.bomberWarned = false;
     this.hintedShield = false;
     this.checkpoint = 1;
     this.spawnWingmen(true);
@@ -221,10 +224,10 @@ export class Mission {
         this.say('Halcyon', 'Its shield bubble stops our guns. Hit the four generator pylons from outside it!', 'command', 8);
         break;
       case 'finale':
-        this.objective = 'Get clear';
-        this.objectiveDetail = 'The Leviathan is breaking up';
+        this.objective = 'Leviathan breaking up';
+        this.objectiveDetail = 'Autopilot burning clear';
         this.showBanner('SHIELDS DOWN', 'Reactor chain reaction', 'good', 3);
-        this.say('Void Two', "The carrier's reactor is going! Get clear!", 'friend', 6);
+        this.say('Void Two', "The carrier's reactor is going! Autopilot's got us, burning clear!", 'friend', 6);
         this.onFinaleStart?.();
         // Every remaining enemy fighter is caught in the blast.
         break;
@@ -308,7 +311,10 @@ export class Mission {
       const ship = w.spawnEnemy(g.kind, pos, toPlayer);
       this.waveShips.push(ship);
     }
-    if (g.kind === 'maul') this.say('Void Three', 'Bombers! Watch for their plasma runs.', 'friend');
+    if (g.kind === 'maul' && !this.bomberWarned) {
+      this.bomberWarned = true;
+      this.say('Void Three', 'Bombers! Watch for their plasma runs.', 'friend');
+    }
   }
 
   private onDestroyed(e: Entity, source: Entity | null): void {

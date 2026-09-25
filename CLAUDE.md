@@ -246,3 +246,24 @@ Newest last. Each entry: date, decision, reason.
 - 2026-09-25: Shaders are pre-compiled (`compileAsync`) with the carrier shown and one of each
   ship, a missile and a shield bubble added, then one frame renders through the post chain before
   the title appears. The playtest reports the worst single frame while flying.
+- 2026-09-25: three builds a separate shader program per render output, so the warm-up compiles
+  every material for the HDR scene buffer (main view) and for the screen (targeting view). A
+  double-sided transparent material draws in two passes with two programs; the player's
+  fade-ready hull is single pass. With that, the self-test logs no shader compiles during play.
+- 2026-09-25: Enemy rims stay just under the bloom threshold and enemy engine flares are small:
+  bloom had turned distant ships into white sparks. Far ships get a minimum on-screen size that
+  eases off with range (0.085 to 0.05 of the half-height), bombers 1.45x that; wingmen and ships
+  near the carrier stay near true scale so the carrier keeps its size.
+- 2026-09-25: On target, the gun cross opens to frame the ship and the steering ring steps aside;
+  a lead point on the ship shrinks to a dot; the target's tag sits beside the vertical axis,
+  clear of other brackets and its own lead dot. The lock readout and LOCK tag are green.
+- 2026-09-25: The carrier is 35 % larger, scaled into the mesh data at export (CARRIER_SCALE in
+  capital_ship.py, mirrored by CAPITAL.scale for finale offsets), and its shader adds procedural
+  panel seams and tint in object space (one baked texture is far too coarse for 940 m).
+- 2026-09-25: Point sprites draw flat at their centre depth, so a blast centred inside a hull was
+  hidden by it (the finale fireball never showed). Carrier blasts and burns are nudged toward the
+  camera. Sprites the camera is inside fade out and stop drawing (no full-screen smoke layers).
+- 2026-09-25: Collision assist also steers around generator pylons; a scrape bounces the ship off
+  with damage and shake; the player's ship only fades for small markers behind it.
+- 2026-09-25: For the critic, the asteroid split frame comes from the standalone showcase run,
+  which frames it against open space (in the long win run a big rock often sits behind it).

@@ -17,6 +17,10 @@ export interface EndStats {
   difficulty: Difficulty;
   /** What killed the player (failure screen only). */
   cause?: string;
+  /** Label for the retry button, e.g. "Retry wave 2" (failure screen only). */
+  retryLabel?: string;
+  /** The checkpoint is the start, so "Restart mission" would repeat "Retry". */
+  checkpointAtStart?: boolean;
 }
 
 const CONTROLS: [string, string][] = [
@@ -92,7 +96,7 @@ export class Screens {
            <ol class="steps">
              <li><b>Waves 1 to 3</b><span>Razor dogfighters, then Maul bombers on strafing runs</span></li>
              <li><b>The Leviathan</b><span>Its shield bubble stops your shots. Hit its 4 generator pylons from outside the bubble</span></li>
-             <li><b>Get clear</b><span>Its reactor takes the carrier with it</span></li>
+             <li><b>Watch it burn</b><span>With its generators gone, its reactor tears the carrier apart</span></li>
            </ol>
            <div class="card-title">Controls</div>
            ${controlsTable()}
@@ -289,6 +293,12 @@ export class Screens {
     if (!div) return;
     const cause = div.querySelector('.cause');
     if (cause) cause.textContent = stats.cause ?? '';
+    if (name === 'gameover') {
+      const retry = div.querySelector('[data-action="retry"]');
+      const restart = div.querySelector('[data-action="restart"]') as HTMLElement | null;
+      if (retry && stats.retryLabel) retry.textContent = stats.retryLabel;
+      if (restart) restart.style.display = stats.checkpointAtStart ? 'none' : '';
+    }
     const grid = div.querySelector('.stats');
     if (grid) {
       grid.innerHTML = [

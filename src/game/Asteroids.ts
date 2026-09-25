@@ -20,6 +20,8 @@ import type { World } from './World';
 
 export interface AsteroidVariant {
   geometry: BufferGeometry;
+  /** Low-poly copy for far rocks (same UVs and material), when the model provides one. */
+  lod?: BufferGeometry;
   material: Material | Material[];
   /** Bounding radius of the geometry at scale 1. */
   radius: number;
@@ -89,7 +91,10 @@ function addHotGlow(m: Material): void {
 export class AsteroidField {
   readonly group = new Group();
   readonly list: Asteroid[] = [];
+  /** Full-detail meshes per variant, then the far LOD meshes per variant. */
   private readonly meshes: InstancedMesh[] = [];
+  private readonly lodBase: number;
+  private readonly counts: number[];
   private readonly grid = new Map<number, Asteroid[]>();
   private stampCounter = 1;
   /** Largest radius among grid-stored (non-landmark) rocks, for query padding. */
@@ -99,9 +104,8 @@ export class AsteroidField {
   destroyedCount = 0;
 
   constructor(private readonly variants: AsteroidVariant[]) {
-    for (const v of variants) {
-      for (const m of Array.isArray(v.material) ? v.material : [v.material]) addHotGlow(m);
-      const mesh = new InstancedMesh(v.geometry, v.material, MAX_INSTANCES);
+    const make = (geometry: BufferGeometry, material: Material | Material[]) => {
+      const mesh = new InstancedMesh(geometry, material, MAX_INSTANCES);
       mesh.instanceMatrix.setUsage(DynamicDrawUsage);
       mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(MAX_INSTANCES * 3), 3);
       mesh.instanceColor.setUsage(DynamicDrawUsage);
@@ -109,7 +113,15 @@ export class AsteroidField {
       mesh.count = 0;
       this.meshes.push(mesh);
       this.group.add(mesh);
+    };
+    for (const v of variants) {
+      for (const m of Array.isArray(v.material) ? v.material : [v.material]) addHotGlow(m);
+      make(v.geometry, v.material);
     }
+    // Most of the belt is far away: those rocks draw a copy with a sixth of the triangles.
+    this.lodBase = this.meshes.length;
+    for (const v of variants) make(v.lod ?? v.geometry, v.material);
+    this.counts = this.meshes.map(() => 0);
   }
 
   /** Scatter the field. Keeps clear bubbles around the player start and the carrier. */
@@ -133,9 +145,9 @@ export class AsteroidField {
       }
     };
     place(0, 130, 230, 6, 1.4);
-    place(1, 34, 62, 46, 1.0);
-    place(2, 15, 28, 90, 1.1);
-    place(3, 6, 12, 90, 1.2);
+    place(1, 34, 62, 60, 1.0);
+    place(2, 15, 28, 125, 1.1);
+    place(3, 6, 12, 130, 1.2);
     this.rebuildGrid();
   }
 
@@ -302,14 +314,18 @@ export class AsteroidField {
   private writeInstances(camera: Camera): void {
     _pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     _frustum.setFromProjectionMatrix(_pv);
-    const counts = [0, 0, 0, 0, 0, 0, 0, 0];
+    const counts = this.counts;
+    counts.fill(0);
+    const cam = camera.position;
     for (const a of this.list) {
       if (!a.alive) continue;
       _sphere.center.copy(a.position);
       _sphere.radius = a.radius * 1.35;
       if (!_frustum.intersectsSphere(_sphere)) continue;
-      const mesh = this.meshes[a.variant];
-      const n = counts[a.variant]++;
+      // Far LOD once the rock is under about 1.5 degrees across.
+      const idx = a.position.distanceTo(cam) > a.radius * 38 ? this.lodBase + a.variant : a.variant;
+      const mesh = this.meshes[idx];
+      const n = counts[idx]++;
       if (n >= MAX_INSTANCES) continue;
       _s.setScalar(a.scale);
       _m.compose(a.position, a.quaternion, _s);

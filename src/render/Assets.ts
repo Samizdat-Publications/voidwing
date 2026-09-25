@@ -42,6 +42,7 @@ const FILES: Record<string, string> = {
 };
 
 const WINGMAN_TRIM = new Color(0x4d7dff);
+const ENEMY_TINT = new Color(1, 0.6, 0.56);
 export const ENEMY_SCALE = { razor: 1.35, maul: 2.2 };
 const _v = new Vector3();
 const _q = new Quaternion();
@@ -147,6 +148,14 @@ export class Assets {
       });
     }
     if (name === 'razor' || name === 'maul') {
+      // A deeper red: in full sun the baked paint washed out to peach, close to the wingmen's white.
+      clone.traverse((o) => {
+        const mesh = o as Mesh;
+        if (!mesh.isMesh) return;
+        for (const m of (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as MeshStandardMaterial[]) {
+          if (m.isMeshStandardMaterial && m.emissiveIntensity < 0.5) m.color.multiply(ENEMY_TINT);
+        }
+      });
       // Enemies are drawn a size up so they read at dogfight range (config radii and guns match).
       const wrap = new Group();
       clone.scale.setScalar(ENEMY_SCALE[name]);
@@ -226,16 +235,24 @@ export class Assets {
     for (const key of ['asteroid_a', 'asteroid_b', 'asteroid_c', 'asteroid_d']) {
       const scene = this.scenes.get(key);
       let mesh: Mesh | null = null;
+      let lodMesh: Mesh | null = null;
       scene?.traverse((o) => {
-        if (!mesh && (o as Mesh).isMesh) mesh = o as Mesh;
+        if (!(o as Mesh).isMesh) return;
+        if (/_LOD$/.test(o.name)) lodMesh = o as Mesh;
+        else if (!mesh) mesh = o as Mesh;
       });
       if (!mesh) continue;
+      const bake = (src: Mesh) => {
+        src.updateWorldMatrix(true, false);
+        const g = src.geometry.clone();
+        g.applyMatrix4(src.matrixWorld);
+        g.computeBoundingSphere();
+        return g;
+      };
       const m = mesh as Mesh;
-      m.updateWorldMatrix(true, false);
-      const geo = m.geometry.clone();
-      geo.applyMatrix4(m.matrixWorld);
-      geo.computeBoundingSphere();
-      out.push({ geometry: geo, material: m.material as Material, radius: geo.boundingSphere?.radius ?? 1 });
+      const geo = bake(m);
+      const lod = lodMesh ? bake(lodMesh as Mesh) : undefined;
+      out.push({ geometry: geo, lod, material: m.material as Material, radius: geo.boundingSphere?.radius ?? 1 });
     }
     this.asteroidCache = out.length === 4 ? out : greyAsteroidVariants();
     return this.asteroidCache;

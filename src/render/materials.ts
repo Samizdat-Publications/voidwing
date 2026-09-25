@@ -78,11 +78,20 @@ export function addHullDetail(mat: MeshStandardMaterial, panel = 11): void {
         {
           vec3 an = abs(vObjNrm);
           vec2 hq = an.x > an.y && an.x > an.z ? vObjPos.yz : (an.y > an.z ? vObjPos.xz : vObjPos.xy);
-          float bigSeam = hullSeams(hq, ${p}, 0.35);
-          float smallSeam = hullSeams(hq + 3.1, ${sp}, 0.18) * step(0.55, hullHash(floor(hq / ${region})));
-          float tint = 0.84 + 0.3 * hullHash(floor(hq / ${p}));
+          float bigSeam = hullSeams(hq, ${p}, 0.4);
+          float smallSeam = hullSeams(hq + 3.1, ${sp}, 0.2) * step(0.55, hullHash(floor(hq / ${region})));
+          vec2 cellId = floor(hq / ${p});
+          float tint = 0.78 + 0.36 * hullHash(cellId);
+          // An inset plate in some panels: a lighter or darker rectangle, anti-aliased.
+          vec2 f = fract(hq / ${p});
+          vec2 inset = vec2(0.16 + 0.18 * hullHash(cellId + 7.3), 0.18 + 0.2 * hullHash(cellId + 1.9));
+          vec2 aa = fwidth(hq / ${p}) * 1.5;
+          vec2 inside = smoothstep(inset - aa, inset + aa, f) * (1.0 - smoothstep(1.0 - inset - aa, 1.0 - inset + aa, f));
+          float plate = inside.x * inside.y * step(0.45, hullHash(cellId + 3.7));
+          float plateTone = mix(0.86, 1.12, hullHash(cellId + 4.1));
           float fade = 1.0 - smoothstep(1800.0, 3200.0, length(vViewPosition));
-          diffuseColor.rgb *= mix(1.0, tint * (1.0 - 0.5 * max(bigSeam, smallSeam * 0.7)), fade);
+          float k = tint * mix(1.0, plateTone, plate) * (1.0 - 0.62 * max(bigSeam, smallSeam * 0.7));
+          diffuseColor.rgb *= mix(1.0, k, fade);
         }`,
       );
   };

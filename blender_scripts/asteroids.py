@@ -27,6 +27,8 @@ import vw_common as vw
 TEX = 1024
 HIGH_SUBDIV = 6
 LOW_FACES = 2400
+# Far-distance copy for the game's level of detail (rocks smaller than ~1.5 degrees on screen).
+LOD_FACES = 360
 
 VARIANTS = [
     # name, seed, ellipsoid, lump strength, craters, ridge, facet, base colours (dark, light), vein colour
@@ -223,6 +225,21 @@ def build_variant(build, v):
     return low, high
 
 
+def make_lod(build, low, faces):
+    """Far-distance copy of the game mesh: decimated further, same UVs and baked material."""
+    lod = low.copy()
+    lod.data = low.data.copy()
+    lod.name = f"{low.name}_LOD"
+    lod.data.name = lod.name
+    build.link(lod)
+    dec = lod.modifiers.new("Decimate", "DECIMATE")
+    dec.ratio = faces / len(low.data.polygons)
+    dec.use_collapse_triangulate = True
+    vw.apply_modifiers(build, lod)
+    lod.data.shade_smooth()
+    return lod
+
+
 def main():
     b = vw.Build("asteroids", samples=16)
     try:
@@ -231,10 +248,14 @@ def main():
             low, high = build_variant(b, v)
             high.hide_render = True
             high.hide_set(True)
-            vw.export_glb(b, [low], f"asteroid_{v['name']}.glb")
+            lod = make_lod(b, low, LOD_FACES)
+            vw.export_glb(b, [low, lod], f"asteroid_{v['name']}.glb")
             # Every variant is built at the origin: hide finished rocks from rays, or they sit
             # inside the next rock during its AO bake and bake in as black blotches.
             low.hide_render = True
+            lod.hide_render = True
+            lod.hide_set(True)
+            vw.log(f"variant {v['name']} LOD: {len(lod.data.polygons)} faces")
             lows.append(low)
             vw.log(f"variant {v['name']}: {len(low.data.polygons)} faces")
         for i, low in enumerate(lows):
