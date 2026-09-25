@@ -21,6 +21,7 @@ import type { World } from '../game/World';
 import type { Assets } from './Assets';
 import type { EffectsApi } from './Effects';
 import { Particles } from './Particles';
+import { setRimBoost } from './materials';
 import { ShieldBubble } from './ShieldFX';
 import { Trails, type TrailHandle } from './Trails';
 
@@ -46,7 +47,7 @@ interface Look {
 }
 
 const LOOKS: Record<string, Look> = {
-  player: { flare: new Color(0.35, 0.7, 1).multiplyScalar(1.3), trail: new Color(0.25, 0.65, 1).multiplyScalar(0.8), width: 0.9, flareSize: 2.5, shield: 0x55ccff },
+  player: { flare: new Color(0.35, 0.7, 1).multiplyScalar(0.9), trail: new Color(0.25, 0.65, 1).multiplyScalar(0.8), width: 0.9, flareSize: 2.2, shield: 0x55ccff },
   wingman: { flare: new Color(0.45, 0.6, 1).multiplyScalar(2.8), trail: new Color(0.3, 0.45, 1).multiplyScalar(1.2), width: 1.3, flareSize: 4.5, shield: 0x6f8cff },
   razor: { flare: new Color(1, 0.45, 0.2).multiplyScalar(4), trail: new Color(1, 0.33, 0.12).multiplyScalar(2.1), width: 2.2, flareSize: 8, shield: 0xff5a3a },
   maul: { flare: new Color(1, 0.5, 0.2).multiplyScalar(4), trail: new Color(1, 0.4, 0.1).multiplyScalar(2), width: 4.3, flareSize: 14, shield: 0xff7a2a },
@@ -165,7 +166,7 @@ export class FX implements EffectsApi {
       _c.set(BOLTS[ship.spec.bolt].color).multiplyScalar(3.5);
       this.particles.glow(origin, ship.kind === 'maul' ? 6 : 3.2, _c, 0.05);
     });
-    ev.on('turretFired', ({ position }) => this.particles.glow(position, 7, _c.setRGB(3.5, 1.8, 0.6), 0.07));
+    ev.on('turretFired', ({ position }) => this.particles.glow(position, 13, _c.setRGB(3.5, 1.8, 0.6), 0.09));
     ev.on('asteroidDestroyed', ({ position, radius }) => this.particles.rockBurst(position, radius));
     ev.on('asteroidVaporized', ({ position, radius }) => this.particles.rockBurst(position, radius * 0.6));
     ev.on('shieldHit', ({ entity, point }) => {
@@ -184,15 +185,16 @@ export class FX implements EffectsApi {
     });
     ev.on('hullHit', ({ entity, point }) => {
       const fx = this.ships.get(entity as Ship);
-      if (fx) fx.flash = 1;
+      const own = entity.kind === 'player';
+      if (fx) fx.flash = own ? 0.45 : 1;
       _d.subVectors(point, entity.position).normalize();
-      this.particles.hit(point, _d.negate(), false, _c.setRGB(3, 1.6, 0.6));
+      this.particles.hit(point, _d.negate(), false, own ? _c.setRGB(1.4, 0.8, 0.35) : _c.setRGB(3, 1.6, 0.6));
     });
     ev.on('capitalShieldHit', ({ point }) => {
       _d.subVectors(point, world.capital.position).normalize().negate();
       this.particles.hit(point, _d, true, _c.setRGB(3, 1.4, 0.5));
     });
-    ev.on('generatorDestroyed', ({ generator }) => this.particles.shockwave(generator.position, 80, 0.6));
+    ev.on('generatorDestroyed', ({ generator }) => this.particles.shockwave(generator.position, 150, 0.8));
     ev.on('capitalExplosion', ({ position, big }) => {
       if (!big) return;
       // The shock rings lie in the carrier's deck plane, tipped toward the camera so they read as ellipses.
@@ -292,6 +294,20 @@ export class FX implements EffectsApi {
   /** Needs the camera, so the game calls it separately after the camera moves. */
   updateView(dt: number, cameraPos: Vector3, viewportHeight: number, fov: number): void {
     this.camPos.copy(cameraPos);
+    // Readability at dogfight range: other ships are drawn up to 2.8x larger with distance
+    // (visual only; hit spheres keep their real size), and their team rim glows brighter so a far
+    // fighter reads as a lit silhouette. The player's current target pulses on top of that.
+    if (this.world) {
+      const target = this.world.player?.target ?? null;
+      const pulse = 0.5 * Math.sin(performance.now() / 160);
+      for (const s of this.world.ships) {
+        if (s.kind === 'player' || !s.alive) continue;
+        const d = s.position.distanceTo(cameraPos);
+        s.model.scale.setScalar(Math.min(2.8, Math.max(1, 1 + (d - 240) / 400)));
+        const far = Math.min(1.8, Math.max(0, (d - 220) / 330));
+        setRimBoost(s.model, (s === target ? 1.9 + pulse : 1) + far);
+      }
+    }
     this.trails.update(dt, cameraPos);
     this.speedDust.update(dt, cameraPos);
     this.particles.setViewport(viewportHeight, fov);

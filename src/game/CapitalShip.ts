@@ -54,8 +54,12 @@ export class Generator extends Entity {
     this.objective = true;
   }
 
+  /** Seconds the wrecked pylon top keeps burning. */
+  burnLeft = 0;
+
   protected onDestroyed(world: World): void {
-    world.effects.explosion(this.position, 3.2, this.capital.velocityZero, false);
+    world.effects.explosion(this.position, 6.5, this.capital.velocityZero, false);
+    this.burnLeft = 7;
     this.object.visible = false;
     if (this.beam) this.beam.visible = false;
     this.capital.onGeneratorDestroyed(this, world);
@@ -136,7 +140,7 @@ export class Turret extends Entity {
       if (this.burstTimer <= 0) {
         this.burstTimer = CAPITAL.turretFireInterval;
         this.burstLeft--;
-        const spread = 0.022 / world.diff.enemyAim;
+        const spread = 0.034 / world.diff.enemyAim;
         _v.copy(this.aim);
         fxRng.unitVector(_v2).multiplyScalar(spread * fxRng.next());
         _v.add(_v2).normalize();
@@ -353,6 +357,15 @@ export class CapitalShip {
     }
     this.syncTransforms();
 
+    // Wrecked generators burn for a while.
+    for (const g of this.generators) {
+      if (g.alive || g.burnLeft <= 0) continue;
+      g.burnLeft -= dt;
+      if (fxRng.next() < dt * 14) {
+        _v.set(fxRng.range(-6, 6), fxRng.range(-4, 6), fxRng.range(-6, 6)).add(g.position);
+        world.effects.burn(_v, fxRng.range(6, 11) * Math.min(1, g.burnLeft / 3 + 0.3));
+      }
+    }
     if (this.state === 'active') {
       for (const t of this.turrets) t.update(dt, world);
       this.launchTimer -= dt;
@@ -444,9 +457,36 @@ export class CapitalShip {
       }
       world.events.emit('capitalExplosion', { position: this.object.position.clone(), big: true });
       this.onFinalBlast?.();
-      this.hull.visible = false;
+      // Bow and stern fly out along the keel, the middle rises; never toward the player (and camera).
+      const toPlayer = _v2.set(0, 0, 0);
+      if (world.player) this.toLocal(world.player.position, toPlayer).normalize();
+      for (const s of this.sections) {
+        _v.set(0, 1, 0);
+        if (s.center.z < -60) _v.set(0, 0.2, -1);
+        else if (s.center.z > 60) _v.set(0, -0.15, 1);
+        _v.normalize();
+        const toward = _v.dot(toPlayer);
+        if (toward > 0) _v.addScaledVector(toPlayer, -toward * 1.2).normalize();
+        s.vel.addScaledVector(_v, 70);
+        s.spin *= 3;
+      }
+      // The light strips went dark at the break-up; without sections (greybox) the hull just vanishes.
+      if (!this.sections.length) this.hull.visible = false;
       for (const t of this.turrets) t.base.visible = false;
       for (const g of this.generators) g.object.visible = false;
+    }
+    // Burning wrecks after the blast.
+    if (this.blasted && this.stateTime < duration) {
+      this.burnTimer -= dt;
+      while (this.burnTimer <= 0) {
+        this.burnTimer += 0.05;
+        const sec = this.sections[Math.floor(fxRng.next() * this.sections.length)];
+        if (!sec) break;
+        _v.set(fxRng.range(-40, 40), fxRng.range(-20, 20), fxRng.range(-80, 80)).add(sec.center);
+        _v.applyQuaternion(sec.obj.quaternion).add(sec.obj.position);
+        this.object.localToWorld(_v);
+        world.effects.burn(_v, fxRng.range(14, 26));
+      }
     }
     if (this.stateTime > duration) {
       this.state = 'dead';

@@ -78,9 +78,9 @@ export interface BoltVisual {
 }
 
 export const BOLTS: Record<BoltKind, BoltVisual> = {
-  player: { color: 0x5fe8ff, intensity: 5, length: 11, width: 0.32, hitRadius: 1.4 },
-  wing: { color: 0x7fb4ff, intensity: 4, length: 9, width: 0.28, hitRadius: 1.0 },
-  enemy: { color: 0xff3b3b, intensity: 5, length: 8, width: 0.34, hitRadius: 1.0 },
+  player: { color: 0x5fe8ff, intensity: 6, length: 24, width: 0.5, hitRadius: 1.4 },
+  wing: { color: 0x7fb4ff, intensity: 5, length: 15, width: 0.42, hitRadius: 1.0 },
+  enemy: { color: 0xff3b3b, intensity: 5.5, length: 13, width: 0.48, hitRadius: 1.0 },
   heavy: { color: 0xff8a1f, intensity: 5, length: 7, width: 1.3, hitRadius: 2.0 },
   flak: { color: 0xffb040, intensity: 4.5, length: 5, width: 0.7, hitRadius: 1.6 },
 };
@@ -175,12 +175,12 @@ export const CAPITAL = {
   shieldRadii: new Vector3(130, 125, 380),
   generatorHull: 380,
   generatorRadius: 20,
-  turretRange: 1500,
+  turretRange: 1100,
   turretFireInterval: 0.22,
-  turretBurst: 4,
-  turretCooldown: 1.7,
+  turretBurst: 3,
+  turretCooldown: 2.4,
   turretBoltSpeed: 560,
-  turretDamage: 5,
+  turretDamage: 3,
   launchInterval: 22,
   maxEscorts: 4,
 };

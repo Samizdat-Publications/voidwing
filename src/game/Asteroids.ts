@@ -290,6 +290,15 @@ export class AsteroidField {
     }
   }
 
+  /** Move a point (the camera) out of any rock it is inside, plus a margin. */
+  pushOut(p: Vector3, margin: number): void {
+    this.queryRadius(p, margin, (a) => {
+      const d = a.position.distanceTo(p);
+      const min = a.radius + margin;
+      if (d < min && d > 1e-3) p.sub(a.position).multiplyScalar(min / d).add(a.position);
+    });
+  }
+
   /** Remove every rock overlapping a sphere (a capital ship jumping in). */
   vaporize(center: Vector3, radius: number, world: World): void {
     for (const a of this.list) {

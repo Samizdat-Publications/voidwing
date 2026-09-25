@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 import { localAngles } from '../core/math';
+import type { Asteroid } from '../game/Asteroids';
 import { PLAYER } from '../game/config';
 import type { Game } from '../game/Game';
 
@@ -12,6 +13,8 @@ const _b = { yaw: 0, pitch: 0 };
  * The bot still flies with real mouse and keyboard events.
  */
 export function installTestHooks(game: Game): void {
+  // The rock the bot's split showcase is working on.
+  let showcaseRock: Asteroid | null = null;
   const api = {
     state() {
       const w = game.world;
@@ -64,27 +67,42 @@ export function installTestHooks(game: Game): void {
         audio: { state: game.audio.ctx?.state ?? 'none', level: Math.round(game.audio.level() * 1000) / 1000, music: game.music.currentMode },
       };
     },
-    /** Aim data for the nearest breakable rock in front of the player (bot showcase). */
-    asteroidAim(maxDist = 520) {
+    /**
+     * Aim data for a breakable rock in front of the player (bot showcase). keep = stay on the rock
+     * picked last time; returns null once that rock is gone.
+     */
+    asteroidAim(maxDist = 520, keep = false) {
       const w = game.world;
       const p = w?.player;
       const ctrl = game.controller;
       if (!w || !p || !ctrl) return null;
       const fwd = p.forward(new Vector3());
       let best = null as null | { pos: Vector3; dist: number; score: number };
-      for (const a of w.asteroids.list) {
-        if (!a.alive || a.tier === 0 || a.radius > 32 || a.radius < 12) continue;
-        const d = a.position.distanceTo(p.position);
-        if (d > maxDist || d < 70) continue;
-        const ang = fwd.angleTo(_dir.copy(a.position).sub(p.position).normalize());
-        const score = ang + d / 1500;
-        if (!best || score < best.score) best = { pos: a.position.clone(), dist: d, score };
+      if (keep && showcaseRock) {
+        if (!showcaseRock.alive) return null;
+        best = { pos: showcaseRock.position.clone(), dist: showcaseRock.position.distanceTo(p.position), score: 0 };
+      } else {
+        showcaseRock = null;
+        for (const a of w.asteroids.list) {
+          if (!a.alive || a.tier === 0 || a.radius > 32 || a.radius < 12) continue;
+          const d = a.position.distanceTo(p.position);
+          if (d > maxDist || d < 70) continue;
+          const ang = fwd.angleTo(_dir.copy(a.position).sub(p.position).normalize());
+          const score = ang + d / 1500;
+          if (!best || score < best.score) {
+            best = { pos: a.position.clone(), dist: d, score };
+            showcaseRock = a;
+          }
+        }
       }
       if (!best) return null;
       _dir.copy(best.pos).sub(p.position).normalize();
       localAngles(p.quaternion, _dir, _a);
       localAngles(p.quaternion, ctrl.aimDir, _b);
       return { dYaw: _a.yaw - _b.yaw, dPitch: _a.pitch - _b.pitch, dist: best.dist, noseErr: fwd.angleTo(_dir) };
+    },
+    showcaseRockAlive() {
+      return !!showcaseRock && showcaseRock.alive;
     },
     setGod(on: boolean) {
       game.setGod(on);

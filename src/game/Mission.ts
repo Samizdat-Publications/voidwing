@@ -245,9 +245,14 @@ export class Mission {
 
     switch (p.kind) {
       case 'intro':
-      case 'break':
-        if (this.phaseTime >= (p.duration ?? 5)) this.enter(this.phaseIndex + 1);
+      case 'break': {
+        const left = (p.duration ?? 5) - this.phaseTime;
+        if (p.kind === 'break' && PHASES[this.phaseIndex + 1]?.kind === 'wave') {
+          this.objectiveDetail = `Rearmed. Next wave in ${Math.max(1, Math.ceil(left))} s`;
+        }
+        if (left <= 0) this.enter(this.phaseIndex + 1);
         break;
+      }
       case 'wave': {
         for (let i = this.pending.length - 1; i >= 0; i--) {
           if (this.phaseTime >= this.pending[i].at) {

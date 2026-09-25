@@ -23,6 +23,8 @@ export abstract class Entity {
   lastHitTime = -999;
   lastShieldHitTime = -999;
   invulnerable = false;
+  /** Hull never drops below this (test god mode shows real damage without dying). */
+  hullFloor = 0;
   /** Damage multiplier applied to incoming damage. */
   damageTaken = 1;
 
@@ -44,7 +46,6 @@ export abstract class Entity {
   takeDamage(amount: number, point: Vector3, source: Entity | null, world: World): boolean {
     if (!this.alive) return false;
     amount *= this.damageTaken;
-    if (this.invulnerable) amount = 0;
     this.lastHitTime = world.time;
     let rest = amount;
     if (this.shield > 0) {
@@ -52,11 +53,14 @@ export abstract class Entity {
       this.shield -= soaked;
       rest -= soaked;
       this.lastShieldHitTime = world.time;
-      world.events.emit('shieldHit', { entity: this, point, amount: soaked });
+      world.events.emit('shieldHit', { entity: this, point, amount: soaked, source });
     }
-    if (rest > 0 || (amount > 0 && this.maxShield === 0)) {
+    // Invulnerable entities still lose shields but never hull; a hull floor caps hull damage.
+    if (this.invulnerable) rest = 0;
+    if (this.hullFloor > 0) rest = Math.min(rest, Math.max(0, this.hull - this.hullFloor));
+    if (rest > 0 || (amount > 0 && this.maxShield === 0 && !this.invulnerable)) {
       this.hull -= rest;
-      world.events.emit('hullHit', { entity: this, point, amount: rest });
+      world.events.emit('hullHit', { entity: this, point, amount: rest, source });
     }
     if (this.hull <= 0) {
       this.hull = 0;

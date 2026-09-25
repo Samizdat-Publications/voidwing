@@ -123,7 +123,9 @@ async function botStep(st) {
     bot.my = cy;
     await page.mouse.move(cx, cy);
   }
-  const wantFire = !bot.passive && a.noseErr < 0.075 && a.dist < 850;
+  // Let the first bomber come in close for its screenshot before shooting it down.
+  const holdForMaul = !once.has('maul_close') && st.target && st.target.kind === 'maul' && a.dist > 240 && a.dist < 800;
+  const wantFire = !bot.passive && !holdForMaul && a.noseErr < 0.075 && a.dist < 850;
   if (wantFire !== bot.firing) {
     if (wantFire) await page.mouse.down();
     else await page.mouse.up();
@@ -135,7 +137,7 @@ async function botStep(st) {
     else await page.keyboard.up('Shift');
     bot.boosting = wantBoost;
   }
-  if (!bot.passive && st.locked && Date.now() - bot.lastMissile > 1400) {
+  if (!bot.passive && !holdForMaul && st.locked && Date.now() - bot.lastMissile > 1400) {
     await page.keyboard.press('f');
     bot.lastMissile = Date.now();
   }
@@ -149,33 +151,47 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
   await sleep(1300);
   await shot('boost');
   await page.keyboard.up('Shift');
-  const before = (await state()).stats.asteroids;
   const deadline = Date.now() + timeoutMs;
   let fired = false;
+  let picked = false;
+  let boosting = false;
   while (Date.now() < deadline) {
-    const a = await page.evaluate((md) => window.__VW.asteroidAim(md), maxDist);
+    const a = await page.evaluate(([md, keep]) => window.__VW.asteroidAim(md, keep), [maxDist, picked]);
     const st = await state();
-    if (!a || st.gameState !== 'playing') break;
+    if (st.gameState !== 'playing') break;
+    if (!a) {
+      // The picked rock is gone: it split. Let the fragments and dust spread, then shoot.
+      if (picked && !(await page.evaluate(() => window.__VW.showcaseRockAlive()))) {
+        if (fired) await page.mouse.up();
+        fired = false;
+        await sleep(650);
+        await shot('asteroid_split');
+      }
+      break;
+    }
+    picked = true;
+    // Boost in until close, so the split happens near the camera.
+    const wantBoost = a.dist > 450;
+    if (wantBoost !== boosting) {
+      if (wantBoost) await page.keyboard.down('Shift');
+      else await page.keyboard.up('Shift');
+      boosting = wantBoost;
+    }
     const dx = clamp((a.dYaw / st.radPerPx) * 0.85, -150, 150);
     const dy = clamp((-a.dPitch / st.radPerPx) * 0.85, -150, 150);
     bot.mx += dx;
     bot.my += dy;
     await page.mouse.move(bot.mx, bot.my);
-    const want = a.noseErr < 0.05 && a.dist < 320;
+    const want = a.noseErr < 0.05 && a.dist < 270;
     if (want !== fired) {
       if (want) await page.mouse.down();
       else await page.mouse.up();
       fired = want;
     }
-    if (st.stats.asteroids > before) {
-      // Give the fragments a moment to fly apart before the shot.
-      await sleep(1100);
-      await shot('asteroid_split');
-      break;
-    }
     await sleep(35);
   }
   if (fired) await page.mouse.up();
+  if (boosting) await page.keyboard.up('Shift');
 }
 
 function track(st) {
@@ -221,15 +237,17 @@ async function runMission({ passive = false } = {}) {
     }
     if (st.gameState === 'playing') {
       await shotOnce('launch', st.phase === 'intro' && inPhase > 1.5);
-      await shotOnce('wave1_combat', st.wave === 1 && st.phase === 'wave' && st.aim && st.aim.dist < 450);
+      await shotOnce('wave1_combat', st.wave === 1 && st.phase === 'wave' && st.aim && st.aim.dist < 350);
       await shotOnce('dogfight_close', st.phase === 'wave' && st.aim && st.aim.dist < 220 && st.aim.noseErr < 0.3);
-      await shotOnce('missile_lock', st.locked);
+      await shotOnce('missile_lock', st.locked && st.aim && st.aim.dist < 650);
       await shotOnce('wave2_bombers', st.wave === 2 && st.phase === 'wave' && ((st.target && st.target.kind === 'maul' && st.aim && st.aim.dist < 600) || inPhase > 30));
       // A live, mostly intact bomber close up: hold fire for a moment so impact flashes clear.
-      if (!once.has('maul_close') && st.target && st.target.kind === 'maul' && st.target.alive && st.target.hull > 60 && st.aim && st.aim.dist < 250 && st.aim.noseErr < 0.3) {
+      const maulClose = (s) => s.target && s.target.kind === 'maul' && s.target.alive && s.target.hull > 40 && s.aim && s.aim.dist < 260 && s.aim.noseErr < 0.35;
+      if (!once.has('maul_close') && maulClose(st)) {
         await releaseAll();
         await sleep(350);
-        await shotOnce('maul_close', true);
+        // Only if it is still a live bomber in view (a missile or wingman may have got it).
+        if (maulClose(await state())) await shotOnce('maul_close', true);
       }
       await shotOnce('wave3_swarm', st.wave === 3 && st.phase === 'wave' && inPhase > 10);
       await shotOnce('wave_cleared', st.phase === 'break' && inPhase > 1);
@@ -255,7 +273,7 @@ async function runMission({ passive = false } = {}) {
     if (st.gameState === 'finale') {
       // Blast at 7.4 s of the 9.6 s finale (progress 0.77).
       await shotOnce('finale_chain', (st.capital?.finale ?? 0) > 0.45);
-      await shotOnce('finale_blast', (st.capital?.finale ?? 0) > 0.8);
+      await shotOnce('finale_blast', (st.capital?.finale ?? 0) > 0.83);
     }
     // Let the death camera pull back and the HUD fade first.
     if (st.gameState === 'dying') {

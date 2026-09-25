@@ -222,8 +222,13 @@ export class Projectiles {
       // Bolts skimming past the camera would fill the screen as flat bars: hide or thin them.
       const cdx = this.px[i] - cameraPos.x, cdy = this.py[i] - cameraPos.y, cdz = this.pz[i] - cameraPos.z;
       const camDist = Math.sqrt(cdx * cdx + cdy * cdy + cdz * cdz);
-      if (camDist < 12) continue;
-      const thin = Math.min(1, Math.max(0.25, (camDist - 12) / 50));
+      // The player's own bolts spawn about 40 m ahead of the camera and stay full size; anything
+      // else passing close to the camera is hidden or thinned so it never becomes a flat beam.
+      const own = KINDS[k] === 'player';
+      if (camDist < (own ? 8 : 16)) continue;
+      const thin = own ? 1 : Math.min(1, Math.max(0.25, (camDist - 16) / 34));
+      // Far bolts keep a minimum on-screen width (about 2 px at 720p) so they stay visible.
+      const width = Math.max(vis.width * thin, camDist * 0.0042);
       const n = this.counts[k]++;
       _dir.set(this.vx[i], this.vy[i], this.vz[i]);
       const speed = _dir.length();
@@ -231,7 +236,7 @@ export class Projectiles {
       _q.setFromUnitVectors(Z, _dir);
       // The bolt position is its head; the streak trails behind it.
       _pos.set(this.px[i], this.py[i], this.pz[i]).addScaledVector(_dir, -vis.length * 0.5);
-      _s.set(vis.width * thin, vis.width * thin, vis.length);
+      _s.set(width, width, vis.length);
       _m.compose(_pos, _q, _s);
       mesh.setMatrixAt(n, _m);
     }

@@ -98,6 +98,13 @@ export class Assets {
       }
       // Engine glow discs get their brightness driven by throttle; Blender's strengths are tuned
       // for Cycles, so bring them into the game's tone-mapped range.
+      // The generator core is a target you fly right up to: keep it from blooming the view white.
+      if (/Gen_Core/.test(mesh.name)) {
+        for (const m of mats) {
+          const sm = m as MeshStandardMaterial;
+          if (sm.isMeshStandardMaterial) sm.emissiveIntensity = Math.min(sm.emissiveIntensity, 1.8);
+        }
+      }
       if (/EngineGlow|Missile_Glow|Leviathan_Engines/.test(mesh.name)) {
         mesh.userData.engineGlow = true;
         for (const m of mats) {
@@ -135,6 +142,8 @@ export class Assets {
       clone.traverse((o) => {
         const mesh = o as Mesh;
         if (mesh.isMesh && /Trim/.test(mesh.name)) (mesh.material as MeshStandardMaterial).emissiveIntensity *= 0.45;
+        // Nozzles too: under the bloom threshold, so they glow without flaring into white discs.
+        if (mesh.isMesh && /EngineGlow/.test(mesh.name)) (mesh.material as MeshStandardMaterial).emissiveIntensity *= 0.5;
       });
     }
     if (name === 'razor' || name === 'maul') {

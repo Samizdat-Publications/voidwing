@@ -14,8 +14,8 @@ import { Projectiles } from './Projectiles';
 import { Ship } from './Ship';
 
 export interface WorldEvents extends Record<string, unknown> {
-  shieldHit: { entity: Entity; point: Vector3; amount: number };
-  hullHit: { entity: Entity; point: Vector3; amount: number };
+  shieldHit: { entity: Entity; point: Vector3; amount: number; source: Entity | null };
+  hullHit: { entity: Entity; point: Vector3; amount: number; source: Entity | null };
   destroyed: { entity: Entity; source: Entity | null };
   fired: { ship: Ship; origin: Vector3; dir: Vector3 };
   playerHit: { target: Entity; point: Vector3; killed: boolean };

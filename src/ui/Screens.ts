@@ -14,7 +14,7 @@ export interface EndStats {
 }
 
 const CONTROLS: [string, string][] = [
-  ['Mouse', 'Aim - the ship turns toward the ring'],
+  ['Mouse', 'Aim - the ship turns toward the cyan dot'],
   ['Left mouse', 'Lasers'],
   ['Right mouse / F', 'Missile (when locked)'],
   ['W / S', 'Throttle up / down'],
@@ -93,7 +93,7 @@ export class Screens {
       if (div) {
         div.innerHTML = [
           ['Time', stats.time],
-          ['Kills', String(stats.kills)],
+          ['Your kills', String(stats.kills)],
           ['Accuracy', `${Math.round(stats.accuracy * 100)}%`],
           ['Generators', `${stats.generators}/4`],
           ['Score', String(stats.score)],

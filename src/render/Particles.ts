@@ -353,7 +353,10 @@ class DebrisLayer {
   constructor(pieces: { geometry: BG; material: MeshStandardMaterial; rock: boolean }[]) {
     for (const p of pieces) {
       const mat = p.material.clone();
-      if (!p.rock) {
+      if (p.rock) {
+        mat.color.multiplyScalar(0.6);
+        mat.roughness = 0.95;
+      } else {
         // Glow fades with the instance colour (hot metal cooling).
         mat.onBeforeCompile = (shader) => {
           shader.fragmentShader = shader.fragmentShader.replace(
@@ -735,13 +738,29 @@ export class Particles {
       fxRng.unitVector(_v2);
       this.smoke.spawn({
         pos: _v.copy(pos).addScaledVector(_v2, fxRng.range(0, radius * 0.6)),
-        vel: _v2.multiplyScalar(fxRng.range(5, 18)).clone(),
-        life: fxRng.range(1.8, 3.2),
+        vel: _v2.multiplyScalar(fxRng.range(6, 20)).clone(),
+        life: fxRng.range(1.0, 1.8),
         size0: radius * 0.9,
-        size1: radius * 3,
+        size1: radius * 2.6,
         color0: C(0xb4a288, 1),
-        color1: C(0x4a4036, 1),
+        color1: C(0x7a6c5c, 1),
         alpha0: 0.7,
+        alpha1: 0,
+        drag: 0.7,
+      });
+    }
+    // A faint sunlit glow in the cloud (additive), so the burst reads even against dark rock.
+    for (let i = 0; i < 8; i++) {
+      fxRng.unitVector(_v2);
+      this.add.spawn({
+        pos: _v.copy(pos).addScaledVector(_v2, fxRng.range(0, radius * 0.5)),
+        vel: _v2.multiplyScalar(fxRng.range(4, 14)).clone(),
+        life: fxRng.range(0.8, 1.4),
+        size0: radius * 1.1,
+        size1: radius * 3.2,
+        color0: C(0xd8c0a0, 0.4),
+        color1: C(0x806a50, 0.12),
+        alpha0: 0.9,
         alpha1: 0,
         drag: 0.7,
       });
@@ -753,8 +772,8 @@ export class Particles {
     }
     if (this.debris) {
       for (let i = 0; i < 18; i++) {
-        fxRng.unitVector(_v2).multiplyScalar(fxRng.range(12, 45));
-        this.debris.spawn(true, _v.copy(pos).addScaledVector(_v2, 0.05), _v2, fxRng.range(0.3, 0.9) * radius * 0.3, fxRng.range(3, 6));
+        fxRng.unitVector(_v2).multiplyScalar(fxRng.range(25, 70));
+        this.debris.spawn(true, _v.copy(pos).addScaledVector(_v2, 0.05), _v2, fxRng.range(0.4, 1.1) * radius * 0.3, fxRng.range(3, 6));
       }
     }
   }
@@ -806,17 +825,18 @@ export class Particles {
     const still = new Vector3();
     this.add.spawn({ pos, vel: still, life: 0.5, size0: 40, size1: 230, color0: C(0xfff6e8, 2.4), color1: C(0xffa050, 1.0), alpha0: 1, alpha1: 0, hot: 0.8 });
     this.add.spawn({ pos, vel: still, life: 2.4, size0: 140, size1: 430, color0: C(0xff9440, 0.8), color1: C(0x5a1606, 0.2), alpha0: 0.45, alpha1: 0, hot: 0.2 });
-    this.ring(pos, _v2.copy(normal).addScaledVector(tilt, 0.9).normalize(), 1500, 2.6, C(0xffd2a0, 1.9));
-    this.ring(pos, _v2.copy(normal).addScaledVector(tilt, -0.35).normalize(), 850, 1.9, C(0x9cc4ff, 1.4));
+    this.ring(pos, _v2.copy(normal).addScaledVector(tilt, 0.45).normalize(), 1500, 2.6, C(0xffd2a0, 1.9));
+    _v.crossVectors(normal, tilt).normalize();
+    this.ring(pos, _v2.copy(normal).addScaledVector(_v, 0.35).addScaledVector(tilt, 0.2).normalize(), 850, 1.9, C(0x9cc4ff, 1.4));
     for (let i = 0; i < 160; i++) {
       fxRng.unitVector(_v2).multiplyScalar(fxRng.range(220, 720));
       this.sparks.spawn(pos, _v2, fxRng.range(0.7, 1.7), C(0xffd090, 1.6));
     }
     if (this.debris) {
-      for (let i = 0; i < 46; i++) {
+      for (let i = 0; i < 60; i++) {
         fxRng.unitVector(_v2);
-        _v.copy(pos).addScaledVector(_v2, fxRng.range(10, 80));
-        this.debris.spawn(false, _v, _v2.multiplyScalar(fxRng.range(40, 150)), fxRng.range(3, 10), fxRng.range(4, 7));
+        _v.copy(pos).addScaledVector(_v2, fxRng.range(10, 120));
+        this.debris.spawn(false, _v, _v2.multiplyScalar(fxRng.range(40, 170)), fxRng.range(6, 18), fxRng.range(4.5, 7.5));
       }
     }
     this.flashLight(pos, 500, 3200, 1.8, 0xffc080);

@@ -68,7 +68,9 @@ Do them in order. After each milestone run the self-test loop below.
    (4 critic rounds, reports in docs/critic/m1-round*.md; progress shots in docs/progress/m1-greybox)
 2. [x] Assets: model everything in Blender via the MCP, export GLB, swap into the game.
    (2 critic rounds, docs/critic/m2-round*.md; shots in docs/progress/m2-assets)
-3. [ ] Feel: animation, camera, particles, screen shake, hit feedback, sound, music.
+3. [x] Feel: animation, camera, particles, screen shake, hit feedback, sound, music.
+   (6 critic rounds, docs/critic/m3-round*.md; shots in docs/progress/m3-feel. Reticle and HUD
+   layout issues carried into M4.)
 4. [ ] UI: title, HUD, pause, game over and victory screens with a consistent designed look.
 5. [ ] Polish and perf: steady 60 fps on a mid-range laptop, no console errors.
 
@@ -179,3 +181,21 @@ Newest last. Each entry: date, decision, reason.
 - 2026-09-24: Milestone playtests run against the production build (`--preview`), built once and
   shared with `--nobuild` when scenarios run in parallel. Reason: editing source during dev-server
   runs triggered HMR reloads that broke the bot.
+- 2026-09-25: Other ships are drawn up to 2.8x larger with distance and their team rim glows
+  brighter with range (visual only; hit spheres keep their real size). Reason: at 450 to 800 m
+  fighters were 5 to 15 px specks; critic rounds 2 to 4.
+- 2026-09-25: Chase camera at 38 m behind, 10 m up; the player's trim, nozzles and flares stay
+  under the bloom threshold. Reason: the player's own ship hid and out-glowed its targets.
+- 2026-09-25: Test god mode lets shields drop and the hull fall to a 25 % floor (`hullFloor`)
+  instead of zeroing damage. Reason: god-mode runs showed shield shimmer with a full HUD, which
+  read as broken feedback.
+- 2026-09-25: Hit events carry their source; the hit-direction arc points at the shooter. Carrier
+  turrets tracking the player are marked (FLAK) and were rebalanced (1.1 km reach, 3-round bursts,
+  2.4 s apart, 3 damage). Reason: critic round 5 found carrier fire invisible and unfair.
+- 2026-09-25: The failure screen names what killed the player; damaged ships burn from a hull
+  wound; the HUD fades out for the finale camera and the death camera.
+- 2026-09-25: M3 closed after 6 critic rounds with a HUD-layout issue as the worst remaining
+  problem (reticle stacking, arrow and banner placement). Same scope rule as M1 and M2: it belongs
+  to the UI milestone, which starts with it.
+- 2026-09-25: UI font is Chakra Petch (OFL-1.1) bundled from npm (`@fontsource/chakra-petch`),
+  latin subsets only. It is the only font.

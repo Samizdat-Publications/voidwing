@@ -81,7 +81,7 @@ const nebulaFrag = /* glsl */ `
     col += vec3(0.1, 0.1, 0.14) * band * 0.18;
     // The local sun: tight core plus wide glare.
     float sd = max(dot(d, uSun), 0.0);
-    col += vec3(1.0, 0.92, 0.8) * (pow(sd, 1800.0) * 9.0 + pow(sd, 90.0) * 0.35 + pow(sd, 8.0) * 0.03);
+    col += vec3(1.0, 0.92, 0.8) * (pow(sd, 2400.0) * 5.0 + pow(sd, 140.0) * 0.16 + pow(sd, 8.0) * 0.02);
     gl_FragColor = vec4(col, 1.0);
   }
 `;

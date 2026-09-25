@@ -10,7 +10,6 @@ import { Assets } from '../render/Assets';
 import { CameraRig } from '../render/CameraRig';
 import { FX } from '../render/FX';
 import { PostFX } from '../render/PostFX';
-import { setRimBoost } from '../render/materials';
 import { Sky } from '../render/Sky';
 import { Hud } from '../ui/Hud';
 import { Screens, type EndStats } from '../ui/Screens';
@@ -61,7 +60,6 @@ export class Game {
   private readonly seed: number;
   private godMode = false;
   private missionStarted = false;
-  private highlighted: Ship | null = null;
 
   constructor(container: HTMLElement) {
     this.engine = new Engine(container);
@@ -154,15 +152,15 @@ export class Game {
     });
     this.world.events.on('playerHit', ({ killed }) => this.hud.onPlayerHit(killed));
     this.world.events.on('shieldBlocked', () => this.hud.onShieldBlocked());
-    this.world.events.on('hullHit', ({ entity, point }) => {
+    this.world.events.on('hullHit', ({ entity, point, source }) => {
       if (entity === this.world.player) {
-        this.hud.onPlayerDamaged(point);
+        this.hud.onPlayerDamaged(source && source.alive ? source.position : point);
         this.rig.addTrauma(0.25);
       }
     });
-    this.world.events.on('shieldHit', ({ entity, point }) => {
+    this.world.events.on('shieldHit', ({ entity, point, source }) => {
       if (entity === this.world.player) {
-        this.hud.onPlayerDamaged(point);
+        this.hud.onPlayerDamaged(source && source.alive ? source.position : point);
         this.rig.addTrauma(0.12);
       }
     });
@@ -243,7 +241,8 @@ export class Game {
     p.controller = this.controller;
     this.controller.enabled = true;
     this.controller.resetAim(p);
-    p.invulnerable = this.godMode;
+    p.invulnerable = false;
+    p.hullFloor = this.godMode ? p.maxHull * 0.25 : 0;
     p.control.throttle = 0.55;
     this.rig.mode = 'chase';
     this.rig.snapTo(p);
@@ -296,7 +295,8 @@ export class Game {
 
   setGod(on: boolean): void {
     this.godMode = on;
-    if (this.world.player) this.world.player.invulnerable = on;
+    const p = this.world.player;
+    if (p) p.hullFloor = on ? p.maxHull * 0.25 : 0;
   }
 
   private onAction(a: string): void {
@@ -354,6 +354,8 @@ export class Game {
     this.rig.cineLerp = 5;
     if (p) {
       p.invulnerable = true;
+      const away = _v.subVectors(p.position, this.world.capital.position).normalize();
+      for (let k = 0; k <= 1200; k += 240) this.world.asteroids.vaporize(_v2.copy(p.position).addScaledVector(away, k), 170, this.world);
       this.updateEscape(0);
       this.rig.camera.position.copy(this.rig.cinePos);
     }
@@ -493,20 +495,17 @@ export class Game {
       this.effects.update(simDt);
     }
     if (this.state === 'finale' && w.player) this.updateEscape(dt);
-    if (this.state !== 'paused') this.rig.update(dt, w.player && w.player.alive ? w.player : null);
+    if (this.state !== 'paused') {
+      this.rig.update(dt, w.player && w.player.alive ? w.player : null);
+      w.asteroids.pushOut(this.engine.camera.position, 8);
+      this.engine.camera.updateMatrixWorld();
+    }
     const cam = this.engine.camera;
     this.sky.update(cam, performance.now() / 1000, this.engine.pixelRatio);
     this.effects.updateView(this.state === 'paused' ? 0 : dt, cam.position, this.engine.height * this.engine.pixelRatio, cam.fov);
     this.sound.update(w, this.controller, this.state === 'playing' || this.state === 'finale');
 
     const p = w.player;
-    // The current target's rim pulses brighter so it stands out from the crowd.
-    const tgt = p && p.alive && p.target && 'model' in p.target ? (p.target as Ship) : null;
-    if (tgt !== this.highlighted) {
-      if (this.highlighted) setRimBoost(this.highlighted.model, 1);
-      this.highlighted = tgt;
-    }
-    if (tgt) setRimBoost(tgt.model, 1.9 + 0.5 * Math.sin(performance.now() / 160));
     if (p && (this.state === 'playing' || this.state === 'finale' || this.state === 'dying')) {
       if (this.controller.missileDenied) {
         this.hud.onNoLock();

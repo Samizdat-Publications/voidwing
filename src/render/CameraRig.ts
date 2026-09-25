@@ -57,7 +57,7 @@ export class CameraRig {
       this.smoothQ.slerp(ship.quaternion, dampFactor(8.5, dt));
       this.boostBlend = damp(this.boostBlend, ship.boosting ? 1 : 0, 3.5, dt);
       // High and back: the ship sits in the lower third, clear of the crosshair.
-      _off.set(0, 8.8, 33 + this.boostBlend * 4);
+      _off.set(0, 10, 38 + this.boostBlend * 4);
       cam.position.copy(_off).applyQuaternion(this.smoothQ).add(ship.position);
       cam.quaternion.copy(this.smoothQ);
       this.setFov(this.baseFov + this.boostBlend * 9, dt);
