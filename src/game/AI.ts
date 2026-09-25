@@ -12,6 +12,7 @@ const _avoid = new Vector3();
 const _rel = new Vector3();
 const _tmp = new Vector3();
 const _upProj = new Vector3();
+const _cam = new Vector3();
 const WORLD_UP = new Vector3(0, 1, 0);
 const _angles = { yaw: 0, pitch: 0 };
 
@@ -85,6 +86,15 @@ function separate(ship: Ship, desired: Vector3, world: World): void {
     // Keep a hull-size gap, so big bombers never fly stacked on top of each other.
     const min = Math.max(45, 24 + ship.radius + o.radius);
     if (d < min && d > 1e-3) desired.addScaledVector(_rel, (min - d) / min / d * 1.2);
+  }
+  // Wingmen also keep clear of the chase camera behind the player, so none fills the view.
+  const p = world.player;
+  if (ship.team === 'player' && p && p !== ship && p.alive) {
+    p.forward(_cam).multiplyScalar(-42).add(p.position);
+    _cam.y += 13;
+    _rel.subVectors(ship.position, _cam);
+    const d = _rel.length();
+    if (d < 45 && d > 1e-3) desired.addScaledVector(_rel, ((45 - d) / 45 / d) * 2);
   }
   desired.normalize();
 }
@@ -409,6 +419,7 @@ export class WingmanAI extends DogfighterAI {
     const desired = new Vector3();
     if (dist > 40) desired.copy(_to).normalize();
     else player.forward(desired);
+    separate(ship, desired, world);
     avoidObstacles(ship, desired, world);
     steerToward(ship, desired, 2.4, 0.5);
     const playerSpeed = player.speed;

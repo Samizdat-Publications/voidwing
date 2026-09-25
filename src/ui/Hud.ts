@@ -123,6 +123,10 @@ export class Hud {
   private panelRects: Rect[] = [];
   /** Each on-screen contact's bracket rect this frame (tag placement and crowding). */
   private readonly bracketRects = new Map<Entity, Rect>();
+  /** The current target's frame on screen this frame (centre and half-size), for the reticle. */
+  private tgt: { x: number; y: number; ss: number } | null = null;
+  /** Off-screen arrows already drawn this frame (so two never sit on top of each other). */
+  private readonly arrowSpots: { x: number; y: number }[] = [];
   private panelRectsAge = 99;
   /** True when the target or lead mark sits behind the player's own ship on screen. */
   overlapShip = false;
@@ -392,6 +396,8 @@ export class Hud {
     g.clearRect(0, 0, this.w, this.h);
     if (!player.alive || this.mode !== 'combat') return;
     this.labelRects.length = 0;
+    this.tgt = null;
+    this.arrowSpots.length = 0;
     // World labels never print over the HUD panels, or through the banner while it is up.
     for (const r of this.panelRects) this.labelRects.push(r);
     if (mission.banner) this.labelRects.push({ x: this.w * 0.2, y: this.h * 0.17 - 6, w: this.w * 0.6, h: 80 });
@@ -478,6 +484,7 @@ export class Hud {
           const p = locking ? controller.lockProgress : 1;
           const ss = size + 5 + (locking ? (1 - p) * 22 : 0);
           targetFrame = { x: pr.x - ss, y: pr.y - ss, w: ss * 2, h: ss * 2 };
+          this.tgt = { x: pr.x, y: pr.y, ss };
           const ready = missileReady && controller.locked;
           g.globalAlpha = locking && !controller.locked ? 0.55 + 0.45 * p : 1;
           this.drawBracket(pr.x, pr.y, ss, color, true, false, e.objective, e.kind === 'maul', ready ? 3.4 : 2.2);
@@ -568,6 +575,7 @@ export class Hud {
         this.project(t.position, camera, pr);
         if (!pr.onScreen) continue;
         if (pr.x > shipRect.x && pr.x < shipRect.x + shipRect.w && pr.y > shipRect.y && pr.y < shipRect.y + shipRect.h) continue;
+        if (this.insidePanel(pr.x, pr.y)) continue;
         g.strokeStyle = COLORS.foe;
         g.lineWidth = 1.6;
         g.strokeRect(pr.x - 5, pr.y - 5, 10, 10);
@@ -608,7 +616,17 @@ export class Hud {
       const tx = pr.x, ty = pr.y, tOn = pr.onScreen;
       this.project(controller.lead, camera, pr);
       const off = Math.hypot(pr.x - tx, pr.y - ty);
-      if (tOn && pr.onScreen) {
+      const inFrame = !!this.tgt && Math.abs(pr.x - tx) < this.tgt.ss * 0.75 && Math.abs(pr.y - ty) < this.tgt.ss * 0.75;
+      if (tOn && pr.onScreen && inFrame) {
+        // The lead falls on the ship itself: a small dot, so the ship stays visible.
+        g.beginPath();
+        g.arc(pr.x, pr.y, 2.6, 0, Math.PI * 2);
+        g.lineWidth = 2;
+        g.strokeStyle = 'rgba(0,0,0,0.6)';
+        g.stroke();
+        g.fillStyle = COLORS.lead;
+        g.fill();
+      } else if (tOn && pr.onScreen) {
         if (pr.x > shipRect.x && pr.x < shipRect.x + shipRect.w && pr.y > shipRect.y && pr.y < shipRect.y + shipRect.h) this.overlapShip = true;
         if (off > 12) {
           g.strokeStyle = COLORS.lead;
@@ -641,11 +659,14 @@ export class Hud {
     player.forward(_v2);
     this.project(_v2.clone().multiplyScalar(PLAYER.convergence).add(player.position), camera, pr);
     const cx = pr.x, cy = pr.y;
-    this.drawCrosshair(cx, cy);
+    // On target: the cross opens up to frame the ship (ticks outside its frame) and the steering
+    // ring steps aside, so the ship you are shooting is never under the symbols.
+    const onTarget = !!this.tgt && Math.abs(cx - this.tgt.x) < this.tgt.ss && Math.abs(cy - this.tgt.y) < this.tgt.ss;
+    this.drawCrosshair(cx, cy, onTarget && this.tgt ? Math.max(14, this.tgt.ss + 4) : 14);
     this.project(_v2.copy(controller.aimDir).multiplyScalar(PLAYER.convergence).add(player.position), camera, pr);
     const adx = pr.x - cx, ady = pr.y - cy;
     // Steering ring: where the ship is turning to. It sits inside the gun sight when on course.
-    if (!pr.behind) {
+    if (!pr.behind && !onTarget) {
       const dist = Math.hypot(adx, ady);
       const onLead = !!target && target.alive && controller.hasLead && this.project(controller.lead, camera, _proj2).onScreen && Math.hypot(_proj2.x - pr.x, _proj2.y - pr.y) < 16;
       const ringR = onLead ? 0 : 9;
@@ -733,10 +754,10 @@ export class Hud {
     const blockers: Rect[] = [];
     for (const [e, r] of this.bracketRects) if (e !== target && r !== own) blockers.push(r);
     const cands = [
-      { x: x - tw / 2, y: y - ss - 16 },
-      { x: x - tw / 2, y: y + ss },
-      { x: x + ss + 2, y: y - 8 },
-      { x: x - ss - 2 - tw, y: y - 8 },
+      { x: x + 10, y: y - ss - 16 },
+      { x: x + 10, y: y + ss },
+      { x: x - 10 - tw, y: y - ss - 16 },
+      { x: x - 10 - tw, y: y + ss },
     ].map((c) => ({ x: clamp(c.x, 6, this.w - tw - 6), y: clamp(c.y, 4, this.h - 20) }));
     const pick = cands.find((c) => !blockers.some((r) => overlaps(r, { x: c.x, y: c.y, w: tw, h: 16 }))) ?? cands[0];
     this.labelRects.push({ x: pick.x, y: pick.y, w: tw, h: 16 });
@@ -816,14 +837,14 @@ export class Hud {
     g.font = '600 11px "Chakra Petch", "Rajdhani", system-ui, sans-serif';
   }
 
-  private drawCrosshair(x: number, y: number): void {
+  private drawCrosshair(x: number, y: number, inner = 14): void {
     const g = this.g;
     // Gun sight: four ticks with a dark outline and a clear middle so the target shows through.
     const ticks = () => {
       g.beginPath();
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        g.moveTo(x + dx * 14, y + dy * 14);
-        g.lineTo(x + dx * 25, y + dy * 25);
+        g.moveTo(x + dx * inner, y + dy * inner);
+        g.lineTo(x + dx * (inner + 11), y + dy * (inner + 11));
       }
       g.stroke();
     };
@@ -837,7 +858,7 @@ export class Hud {
       const k = Math.max(this.hitMarker, this.killMarker);
       g.strokeStyle = this.killMarker > 0 ? `rgba(255,77,94,${this.killMarker})` : `rgba(255,255,255,${k})`;
       g.lineWidth = this.killMarker > 0 ? 3 : 2;
-      const r0 = 7, r1 = this.killMarker > 0 ? 18 : 13;
+      const r0 = Math.max(7, inner * 0.55), r1 = r0 + (this.killMarker > 0 ? 11 : 6);
       g.beginPath();
       for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
         g.moveTo(x + dx * r0, y + dy * r0);
@@ -925,6 +946,8 @@ export class Hud {
     const t = Math.min(hw / Math.max(1e-6, Math.abs(Math.cos(ang))), hh / Math.max(1e-6, Math.abs(Math.sin(ang))));
     const pt = this.dodgePanels(cx + Math.cos(ang) * t, cy + Math.sin(ang) * t, m);
     const x = pt.x, y = pt.y;
+    if (!big && this.arrowSpots.some((a) => Math.hypot(a.x - x, a.y - y) < 30)) return;
+    this.arrowSpots.push({ x, y });
     const s = big ? 20 : 14;
     g.save();
     g.translate(x, y);

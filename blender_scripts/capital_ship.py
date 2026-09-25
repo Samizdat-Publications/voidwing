@@ -28,7 +28,7 @@ import vw_common as vw
 
 TEX = 2048
 PAINT, DARK, ACCENT = 0, 1, 2
-SHIELD_RADII = (105.0, 400.0, 85.0)  # x, y (length), z
+SHIELD_RADII = (105.0, 400.0, 125.0)  # x, y (length), z: tall enough to read as a bubble
 
 # Hull stations: y, half-width, top, bottom
 PROFILE = [

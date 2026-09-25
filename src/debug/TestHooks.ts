@@ -67,6 +67,7 @@ export function installTestHooks(game: Game): void {
         hitches: game.hitches.slice(),
         latePrograms: game.latePrograms.slice(),
         prewarmMs: game.prewarmMs,
+        heapMB: Math.round(((performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0) / 1e5) / 10,
         frameMs: Math.round(game.frameMs * 100) / 100,
         render: game.renderStats(),
         radPerPx: PLAYER.mouseRadPerPx * game.settings.sensitivity,

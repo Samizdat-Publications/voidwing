@@ -245,7 +245,7 @@ h2 { font-size: 34px; font-weight: 700; letter-spacing: 0.22em; text-transform: 
 .glyph-cross::after { top: 20px; left: 8px; height: 2px; width: 26px; background: linear-gradient(90deg, var(--ink) 0 38%, transparent 38% 62%, var(--ink) 62%); }
 .glyph-leaddot::before { width: 10px; height: 10px; border-radius: 50%; background: var(--lead); left: 16px; top: 16px; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.6); }
 .glyph-lock::before { inset: 11px; border: 2px solid var(--foe); }
-.glyph-lock::after { content: 'LOCK'; font-size: 8px; font-weight: 700; color: var(--foe); left: 0; right: 0; top: 1px; text-align: center; letter-spacing: 0.1em; }
+.glyph-lock::after { content: 'LOCK'; font-size: 8px; font-weight: 700; color: #06131c; background: var(--good); left: 6px; right: 6px; top: 0; text-align: center; letter-spacing: 0.1em; }
 .glyph-arrow::before { left: 14px; top: 12px; border-left: 18px solid var(--foe); border-top: 9px solid transparent; border-bottom: 9px solid transparent; }
 .glyph-hit::before { left: 10px; top: 13px; width: 10px; height: 10px; border-right: 3px solid var(--warn); border-bottom: 3px solid var(--warn); transform: rotate(-45deg); }
 .glyph-hit::after { left: 20px; top: 13px; width: 10px; height: 10px; border-right: 3px solid var(--warn); border-bottom: 3px solid var(--warn); transform: rotate(-45deg); }

@@ -53,7 +53,7 @@ log('server', baseUrl);
 
 const browser = await chromium.launch({
   headless: !flag('headed'),
-  args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'],
+  args: ['--use-angle=d3d11', '--enable-gpu', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', '--enable-precise-memory-info'],
 });
 const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
 
@@ -266,7 +266,7 @@ async function runMission({ passive = false } = {}) {
     const inPhase = (Date.now() - phaseEnteredAt) / 1000;
     if (Date.now() - lastPerf > 3000 && st.gameState === 'playing') {
       lastPerf = Date.now();
-      perf.push({ t: (Date.now() - t0) / 1000, fps: st.fps, frameMs: st.frameMs, worstMs: Math.round(worstWindow), calls: st.render.calls, tris: st.render.triangles, phase: st.phase, quality: st.quality });
+      perf.push({ t: (Date.now() - t0) / 1000, fps: st.fps, frameMs: st.frameMs, worstMs: Math.round(worstWindow), heapMB: st.heapMB, calls: st.render.calls, tris: st.render.triangles, phase: st.phase, quality: st.quality });
       worstWindow = 0;
     }
     if (st.gameState === 'playing') {
@@ -430,7 +430,7 @@ const report = {
 fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2));
 fs.writeFileSync(path.join(outDir, 'console.log'), consoleLog.map((m) => `[${m.t.toFixed(1)}] ${m.type}: ${m.text}`).join('\n'));
 log(`outcome=${outcome} errors=${errors.length} warnings=${warnings.length} shots=${shots.length} avgFps=${report.perf.avgFps} minFps=${report.perf.minFps} worstFrame=${report.perf.worstFrameMs}ms prewarm=${report.prewarmMs}ms quality=${finalState?.quality} audioMax=${audioSeen.maxLevel} music=${[...audioSeen.modes].join(',')}`);
-if (finalState?.hitches?.length) log('hitches (game time, rAF gap, update ms, render ms):', finalState.hitches.map((h) => `${h.at}s ${h.phase} gap ${h.gap} u${h.update} r${h.render}`).join(' | '));
+if (finalState?.hitches?.length) log('hitches (game time, rAF gap, update ms, render ms):', finalState.hitches.map((h) => `${h.at}s ${h.phase} gap ${h.gap} u${h.update} r${h.render}${h.update > 30 ? ` [${h.slowest}]` : ''}`).join(' | '));
 if (finalState?.latePrograms?.length) log('programs compiled after warm-up:', finalState.latePrograms.map((p) => `${p.at}s ${p.name}`).join(' | '));
 log('out:', outDir);
 await browser.close();

@@ -484,10 +484,13 @@ const ringFrag = /* glsl */ `
   uniform float uThick;
   varying vec2 vUv;
   void main() {
-    float d = length(vUv);
+    float ang = atan(vUv.y, vUv.x);
+    // A ragged, patchy front rather than a perfect circle.
+    float d = length(vUv) + 0.005 * sin(ang * 9.0 + 2.0) + 0.004 * sin(ang * 23.0);
     if (d > 1.0) discard;
+    float uneven = 0.62 + 0.38 * sin(ang * 5.0 + 1.3) * sin(ang * 11.0 + 0.7);
     // Bright leading edge, a soft wake behind it and a faint glow across the disc.
-    float edge = smoothstep(1.0 - uThick, 1.0 - uThick * 0.3, d) * (1.0 - smoothstep(0.985, 1.0, d));
+    float edge = smoothstep(1.0 - uThick, 1.0 - uThick * 0.3, d) * (1.0 - smoothstep(0.985, 1.0, d)) * uneven;
     float wake = 0.035 * smoothstep(0.4, 1.0 - uThick, d);
     float k = (edge + wake) * uAlpha;
     gl_FragColor = vec4(uColor * k, k);
@@ -835,11 +838,22 @@ export class Particles {
       fxRng.unitVector(_v2).multiplyScalar(fxRng.range(220, 720));
       this.sparks.spawn(pos, _v2, fxRng.range(0.7, 1.7), C(0xffd090, 1.6));
     }
+    // Slow burning streaks: flaming wreckage arcing out of the cloud.
+    for (let i = 0; i < 50; i++) {
+      fxRng.unitVector(_v2).multiplyScalar(fxRng.range(70, 240));
+      this.sparks.spawn(pos, _v2, fxRng.range(1.6, 2.8), C(0xff8a3a, 1.9));
+    }
+    // Fireballs strung through the blast, so the cloud is ragged and full of burning pieces.
+    for (let i = 0; i < 18; i++) {
+      fxRng.unitVector(_v2);
+      _v.copy(pos).addScaledVector(_v2, fxRng.range(40, 260));
+      this.add.spawn({ pos: _v.clone(), vel: _v2.multiplyScalar(fxRng.range(20, 90)).clone(), life: fxRng.range(1.2, 2.2), size0: fxRng.range(30, 60), size1: fxRng.range(90, 170), color0: C(0xffb050, 1.5), color1: C(0x902808, 0.3), alpha0: 0.8, alpha1: 0, drag: 0.4, hot: 0.4 });
+    }
     if (this.debris) {
-      for (let i = 0; i < 60; i++) {
+      for (let i = 0; i < 110; i++) {
         fxRng.unitVector(_v2);
-        _v.copy(pos).addScaledVector(_v2, fxRng.range(10, 120));
-        this.debris.spawn(false, _v, _v2.multiplyScalar(fxRng.range(40, 170)), fxRng.range(4, 11), fxRng.range(4.5, 7.5));
+        _v.copy(pos).addScaledVector(_v2, fxRng.range(10, 160));
+        this.debris.spawn(false, _v, _v2.multiplyScalar(fxRng.range(30, 190)), fxRng.range(4, 14), fxRng.range(3, 7.5));
       }
     }
     this.flashLight(pos, 500, 3200, 1.8, 0xffc080);

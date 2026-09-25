@@ -40,7 +40,7 @@ Other commands:
 | --- | --- |
 | Mouse | Aim. The ship turns toward the white steering ring |
 | Left mouse (hold) | Lasers |
-| Right mouse or F | Fire a missile once the lock tone goes solid and the target shows LOCK |
+| Right mouse or F | Fire a missile once the lock tone goes solid and the target shows a green LOCK tag |
 | W / S | Throttle up / down |
 | A / D | Roll left / right |
 | Shift or Space | Boost (drains the boost meter) |
@@ -49,11 +49,15 @@ Other commands:
 
 ## How to play
 
+- **Steer with the mouse.** The white ring in the middle of the screen is where you are steering:
+  the ship turns toward it, and the white cross (where your guns point) swings onto it.
 - **Aim with the white cross, lead with the yellow dot.** The white cross shows where your guns
   point. A moving target shows a yellow lead dot: put the cross on the dot and fire.
 - **Missiles** lock on by themselves while the target stays near the middle of the screen. When
-  the frame closes in and the tag reads LOCK, press right mouse or F. Missiles rearm between waves.
-- **Colours:** cyan is friendly, red is hostile, amber is an objective, orange is danger to you.
+  the frame closes in and a green LOCK tag appears, press right mouse or F. Missiles rearm
+  between waves.
+- **Colours:** cyan is friendly, red is hostile, amber is an objective, orange is danger to you,
+  green is your missile lock.
   Arrows at the screen edge point to things off screen, and orange chevrons around your ship show
   where incoming fire comes from.
 - **Shields** recharge a few seconds after you stop taking hits. Hull damage does not.

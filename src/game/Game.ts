@@ -69,7 +69,15 @@ export class Game {
   /** Longest single frame while flying since the test hooks last read it (hitch tracking). */
   private worstFrame = 0;
   /** Recent long frames with where the time went (test diagnostics). */
-  readonly hitches: { at: number; gap: number; update: number; render: number; phase: string }[] = [];
+  readonly hitches: { at: number; gap: number; update: number; render: number; phase: string; slowest: string }[] = [];
+  /** Per-section times of the current frame's update (hitch diagnostics). */
+  private readonly prof: Record<string, number> = {};
+  private profT = 0;
+  private mark(name: string): void {
+    const now = performance.now();
+    this.prof[name] = now - this.profT;
+    this.profT = now;
+  }
   /** Shader programs compiled after the warm-up, with when they appeared (test diagnostics). */
   readonly latePrograms: { at: number; name: string; key: string }[] = [];
   private programCount = -1;
@@ -616,7 +624,10 @@ export class Game {
     }
     if (programs && this.programCount >= 0) this.programCount = programs.length;
     if ((this.state === 'playing' || this.state === 'finale') && (elapsed > 60 || t2 - t0 > 40)) {
-      this.hitches.push({ at: Math.round(this.world.time * 10) / 10, gap: Math.round(elapsed), update: Math.round(t1 - t0), render: Math.round(t2 - t1), phase: this.mission.phase.kind });
+      let slowest = '';
+      let slowMs = -1;
+      for (const k in this.prof) if (this.prof[k] > slowMs) [slowest, slowMs] = [k, this.prof[k]];
+      this.hitches.push({ at: Math.round(this.world.time * 10) / 10, gap: Math.round(elapsed), update: Math.round(t1 - t0), render: Math.round(t2 - t1), phase: this.mission.phase.kind, slowest: `${slowest} ${Math.round(slowMs)}` });
       if (this.hitches.length > 12) this.hitches.shift();
     }
   }
@@ -654,6 +665,7 @@ export class Game {
   }
 
   private update(dt: number): void {
+    this.profT = performance.now();
     this.stateTime += dt;
     const w = this.world;
     const input = this.input;
@@ -684,10 +696,14 @@ export class Game {
     }
 
     const simDt = this.state === 'paused' ? 0 : dt * this.timeScale;
+    this.mark('input');
     if (simDt > 0) {
       w.update(simDt, this.engine.camera);
+      this.mark('world');
       if (this.state === 'playing' || this.state === 'dying' || this.state === 'finale') this.mission.update(simDt);
+      this.mark('mission');
       this.effects.update(simDt);
+      this.mark('fx');
     }
     if (this.state === 'finale' && w.player) this.updateEscape(dt);
     if (this.state !== 'paused') {
@@ -697,9 +713,12 @@ export class Game {
       this.engine.camera.updateMatrixWorld();
     }
     const cam = this.engine.camera;
+    this.mark('camera');
     this.sky.update(cam, performance.now() / 1000, this.engine.pixelRatio);
     this.effects.updateView(this.state === 'paused' ? 0 : dt, cam.position, this.engine.height * this.engine.pixelRatio, cam.fov);
+    this.mark('view');
     this.sound.update(w, this.controller, this.state === 'playing' || this.state === 'finale');
+    this.mark('sound');
 
     const p = w.player;
     if (p && (this.state === 'playing' || this.state === 'finale' || this.state === 'dying')) {
@@ -710,5 +729,6 @@ export class Game {
       this.hud.update(dt, { world: w, player: p, controller: this.controller, mission: this.mission, camera: this.engine.camera });
       this.effects.playerFadeTarget = this.hud.overlapShip ? 0.3 : 1;
     }
+    this.mark('hud');
   }
 }

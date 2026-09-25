@@ -63,8 +63,9 @@ const _white = new Color(1, 1, 1);
 const _flash = new Color();
 
 /**
- * Instance colours above 1 (a laser hit flash, a fresh fragment) also glow, so a hot fracture
- * reads on the shadowed side of a rock too.
+ * Fresh fragments glow, brightest toward their silhouette so the pieces keep their shape; the
+ * instance colour's blue channel dipping under 1 marks "hot" (a laser hit flash raises it, so a
+ * flash only brightens the lit side and never turns a rock into a flat glowing blob).
  */
 function addHotGlow(m: Material): void {
   const sm = m as MeshStandardMaterial;
@@ -75,7 +76,9 @@ function addHotGlow(m: Material): void {
       '#include <emissivemap_fragment>',
       `#include <emissivemap_fragment>
       #ifdef USE_COLOR
-        totalEmissiveRadiance += max(vColor.rgb - 1.0, 0.0) * 0.12;
+        float hot = clamp((1.0 - vColor.b) * 2.0, 0.0, 1.0);
+        float rim = 1.0 - saturate(dot(normalize(normal), normalize(vViewPosition)));
+        totalEmissiveRadiance += vec3(1.0, 0.36, 0.07) * hot * (0.12 + 0.55 * rim * rim);
       #endif`,
     );
   };
@@ -313,7 +316,7 @@ export class AsteroidField {
       mesh.setMatrixAt(n, _m);
       if (a.flash > 0 || a.hot > 0) {
         const h = a.hot * a.hot;
-        _flash.setRGB(1 + a.flash * 2.5 + h * 3.2, 1 + a.flash * 1.6 + h * 1.3, 1 + a.flash * 1.0 + h * 0.3);
+        _flash.setRGB(1 + a.flash * 2.5 + h * 1.2, 1 + a.flash * 1.6 + h * 0.35, 1 + a.flash * 1.0 - h * 0.5);
       } else _flash.copy(_white);
       mesh.setColorAt(n, _flash);
     }

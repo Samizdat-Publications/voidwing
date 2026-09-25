@@ -69,6 +69,8 @@ const _c = new Color();
 const MISSILE_GLOW = new Color(1, 0.8, 0.5).multiplyScalar(3.5);
 const BOLT_GLOW = new Color(0.4, 0.9, 1).multiplyScalar(2.6);
 const ENEMY_MISSILE_GLOW = new Color(1, 0.35, 0.2).multiplyScalar(3.5);
+const MISSILE_TRAIL = new Color(0.85, 0.92, 1).multiplyScalar(1.6);
+const ENEMY_MISSILE_TRAIL = new Color(1, 0.5, 0.25).multiplyScalar(1.6);
 
 /** Speed streaks drifting past the camera: the main cue for how fast you are going. */
 class SpaceDust {
@@ -138,6 +140,7 @@ export class FX implements EffectsApi {
   private readonly speedDust: SpaceDust;
   private readonly ships = new Map<Ship, ShipFx>();
   private readonly missiles = new WeakMap<Missile, number>();
+  private readonly missileTrails = new Map<Missile, TrailHandle>();
   private time = 0;
   private world: World | null = null;
   private readonly camPos = new Vector3();
@@ -298,6 +301,7 @@ export class FX implements EffectsApi {
   }
   clear(): void {
     for (const [ship, fx] of this.ships) this.releaseShip(ship, fx);
+    this.missileTrails.clear();
     this.particles.clear();
     this.trails.clear();
   }
@@ -314,6 +318,11 @@ export class FX implements EffectsApi {
       // Ships removed without a destroyed event (retry / restart).
       for (const [ship, fx] of this.ships) if (!w.ships.includes(ship)) this.releaseShip(ship, fx);
       for (const m of w.missiles.list) this.updateMissile(m);
+      for (const [m, h] of this.missileTrails) {
+        if (m.alive && w.missiles.list.includes(m)) continue;
+        this.trails.release(h);
+        this.missileTrails.delete(m);
+      }
       // The player's lasers get a glowing head so their fire blooms even seen from behind.
       w.projectiles.forEachHead('player', (x, y, z) => this.particles.glow(_p.set(x, y, z), 2.4, BOLT_GLOW));
       // Fade the player's own ship while the target or lead dot is behind it on screen.
@@ -349,7 +358,9 @@ export class FX implements EffectsApi {
         const d = s.position.distanceTo(cameraPos);
         let maxScale = s.team === 'player' ? 1.8 : 3.6;
         if (capAround && s.position.distanceTo(cap.position) < 750) maxScale = s.team === 'player' ? 1.25 : 2;
-        const scale = Math.min(maxScale, Math.max(1, (0.06 * d * tanHalf) / s.radius));
+        // The size floor eases off with range, so a far fighter still looks farther than a near one.
+        const floor = 0.06 - 0.025 * Math.min(1, Math.max(0, (d - 300) / 700));
+        const scale = Math.min(maxScale, Math.max(1, (floor * d * tanHalf) / s.radius));
         s.model.scale.setScalar(scale);
         s.viewScale = scale;
         const far = Math.min(1.8, Math.max(0, (d - 180) / 330));
@@ -437,6 +448,12 @@ export class FX implements EffectsApi {
     if (!m.alive) return;
     _p.copy(m.position).addScaledVector(m.dir, -1.5);
     this.particles.glow(_p, 3.2, m.team === 'player' ? MISSILE_GLOW : ENEMY_MISSILE_GLOW);
+    let trail = this.missileTrails.get(m);
+    if (trail === undefined) {
+      trail = this.trails.create(m.team === 'player' ? MISSILE_TRAIL : ENEMY_MISSILE_TRAIL, 1.3, 0.9);
+      this.missileTrails.set(m, trail);
+    }
+    this.trails.push(trail, _p);
     const last = this.missiles.get(m) ?? -1;
     if (this.time - last > 0.022) {
       this.missiles.set(m, this.time);

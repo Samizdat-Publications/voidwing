@@ -208,7 +208,7 @@ export class CapitalShip {
     this.object.visible = false;
     world.scene.add(this.object);
 
-    this.shield = new ShieldBubble(0xff8a3a, 1.4, 1, 0.05);
+    this.shield = new ShieldBubble(0xff8a3a, 1.4, 1, 0.07);
     this.shield.mesh.position.copy(this.layout.shieldCenter);
     this.shield.mesh.scale.copy(this.layout.shieldRadii);
     this.object.add(this.shield.mesh);
@@ -461,6 +461,8 @@ export class CapitalShip {
         world.effects.explosion(_v, 9, this.velocityZero, false);
       }
       world.events.emit('capitalExplosion', { position: this.object.position.clone(), big: true });
+      // The blast shatters the rocks drifting around the wreck.
+      world.asteroids.vaporize(this.object.position, 520, world);
       this.onFinalBlast?.();
       // Bow and stern fly out along the keel, the middle rises; never toward the player (and camera).
       const toPlayer = _v2.set(0, 0, 0);
