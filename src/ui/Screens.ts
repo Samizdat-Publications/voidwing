@@ -111,7 +111,7 @@ export class Screens {
            <div class="howto"><div class="glyph glyph-lock"></div><div><b>Missiles lock on.</b> Keep the target near the cross until its frame turns solid and a green LOCK tag appears, then press right mouse or F.</div></div>
            <div class="howto"><div class="glyph glyph-arrow"></div><div><b>Arrows at the screen edge</b> point to enemies you cannot see. Tab switches target.</div></div>
            <div class="howto"><div class="glyph glyph-shield"></div><div><b>Shields recharge, hull does not.</b> Boost (Shift) out of trouble; wave breaks rearm and patch you up.</div></div>
-           <div class="howto"><div class="glyph glyph-hit"></div><div><b>Orange chevrons</b> around your ship point at whatever is hitting you from off screen. <b>MISSILE</b> arrows mean break hard and boost.</div></div>
+           <div class="howto"><div class="glyph glyph-hit"></div><div><b>Orange chevrons</b> around your ship point at whatever is hitting you from off screen. An orange triangle is a missile in flight; <b>MISSILE</b> arrows mean break hard and boost.</div></div>
            <div class="howto"><div class="glyph glyph-gen"></div><div><b>The carrier's shield</b> blocks your shots. If a generator tag says SHIELD IN THE WAY, swing out until it clears.</div></div>
          </div>
          <div class="howto-controls">${controlsTable()}</div>

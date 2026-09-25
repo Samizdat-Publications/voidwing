@@ -214,7 +214,7 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
     }
     // Fire from outside the collision assist's look-ahead, or the ship steers off the rock. The
     // tolerance follows the rock's size on screen.
-    const want = a.noseErr < Math.max(0.05, Math.atan(a.radius / Math.max(a.dist, 1)) * 0.7) && a.dist < 320;
+    const want = a.noseErr < Math.max(0.05, Math.atan(a.radius / Math.max(a.dist, 1)) * 0.7) && a.dist < 240;
     if (want !== fired) {
       if (want) await page.mouse.down();
       else await page.mouse.up();

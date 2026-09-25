@@ -82,7 +82,7 @@ export const BOLTS: Record<BoltKind, BoltVisual> = {
   wing: { color: 0x7fb4ff, intensity: 5, length: 15, width: 0.42, hitRadius: 1.0 },
   enemy: { color: 0xff3b3b, intensity: 5.5, length: 13, width: 0.48, hitRadius: 1.0 },
   heavy: { color: 0xff8a1f, intensity: 5, length: 7, width: 1.3, hitRadius: 2.0 },
-  flak: { color: 0xffb040, intensity: 4.5, length: 5, width: 0.7, hitRadius: 1.6 },
+  flak: { color: 0xffb040, intensity: 5.5, length: 10, width: 1.1, hitRadius: 1.6 },
 };
 
 export const PLAYER = {

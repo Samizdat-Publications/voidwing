@@ -91,7 +91,7 @@ export class Mission {
         this.stats.generators++;
         if (remaining > 0) {
           this.say('Void Two', remaining === 1 ? 'One generator left! Finish it!' : `Generator down! ${remaining} to go.`, 'friend');
-          this.showBanner('GENERATOR DESTROYED', `${remaining} remaining`, 'good', 2);
+          // The objective panel and the radio already say it: no banner over the next pylon.
         }
       }),
       ev.on('escortLaunched', () => {
@@ -111,7 +111,7 @@ export class Mission {
     return 0;
   }
 
-  say(from: string, text: string, team: RadioMessage['team'] = 'friend', duration = 5): void {
+  say(from: string, text: string, team: RadioMessage['team'] = 'friend', duration = 4.5): void {
     this.messages.push({ from, text, time: this.world.time, duration, team });
     if (this.messages.length > 6) this.messages.shift();
     this.world.events.emit('radio', { from, text });
@@ -186,7 +186,7 @@ export class Mission {
         this.waveHasBombers = def.groups.some((g) => g.kind === 'maul');
         this.waveKills = 0;
         this.objective = `Wave ${(p.wave ?? 0) + 1} of ${WAVES.length}`;
-        this.showBanner(`WAVE ${(p.wave ?? 0) + 1}`, def.name, 'warn', 2.4);
+        this.showBanner(`WAVE ${(p.wave ?? 0) + 1}`, def.name, 'warn', 2);
         if (p.wave === 1) this.say('Halcyon', 'Bombers in this wave. They make long strafing runs, so break off their line.', 'command', 6);
         if (p.wave === 2) this.say('Void Two', 'Here they come. Stay close, Void One.', 'friend');
         break;
@@ -208,7 +208,7 @@ export class Mission {
         } else {
           this.objective = 'Regroup';
           this.objectiveDetail = 'Rearmed. Next wave soon';
-          this.showBanner('WAVE CLEARED', 'Missiles rearmed', 'good', 3);
+          this.showBanner('WAVE CLEARED', 'Missiles rearmed', 'good', 2.4);
           this.say('Void Three', 'Scope is clear. Nice shooting, lead.', 'friend');
         }
         break;
@@ -217,7 +217,7 @@ export class Mission {
         this.checkpoint = index;
         w.capital.warpIn(w);
         this.objective = 'Destroy the Leviathan';
-        this.showBanner('LEVIATHAN', 'Hegemony carrier', 'warn', 4);
+        this.showBanner('LEVIATHAN', 'Hegemony carrier', 'warn', 3);
         this.say('Halcyon', 'Its shield bubble stops our guns. Hit the four generator pylons from outside it!', 'command', 8);
         break;
       case 'finale':

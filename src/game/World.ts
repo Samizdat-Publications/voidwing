@@ -108,7 +108,8 @@ export class World {
     this.byId.set(ship.id, ship);
     this.scene.add(ship.object);
     // Team-tinted silhouette rim so ships read against black space.
-    const rim = ship.kind === 'player' ? 0.3 : ship.team === 'player' ? 0.9 : 1.9;
+    // Enemy rims stay just under the bloom threshold: a crisp red edge, never a white glow.
+    const rim = ship.kind === 'player' ? 0.3 : ship.team === 'player' ? 0.9 : 1.2;
     applyTeamRim(ship.model, TEAM_RIM[ship.team], rim);
     return ship;
   }

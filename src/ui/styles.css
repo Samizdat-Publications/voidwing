@@ -75,8 +75,8 @@ button { font-family: var(--font); }
   background: linear-gradient(90deg, transparent 22%, rgba(4, 8, 16, 0.32) 38%, rgba(4, 8, 16, 0.32) 62%, transparent 78%);
 }
 .hud-banner.show { opacity: 1; }
-.banner-title { font-size: 34px; font-weight: 700; letter-spacing: 0.28em; text-shadow: var(--shadow-text); padding-left: 0.28em; }
-.banner-sub { font-size: 14px; font-weight: 500; letter-spacing: 0.18em; color: var(--ink-2); text-transform: uppercase; text-shadow: var(--shadow-text); margin-top: var(--s1); }
+.banner-title { font-size: 28px; font-weight: 700; letter-spacing: 0.26em; text-shadow: var(--shadow-text); padding-left: 0.26em; }
+.banner-sub { font-size: 13px; font-weight: 500; letter-spacing: 0.18em; color: var(--ink-2); text-transform: uppercase; text-shadow: var(--shadow-text); margin-top: var(--s1); }
 .hud-banner[data-tone='warn'] .banner-title { color: var(--foe); }
 .hud-banner[data-tone='good'] .banner-title { color: var(--friend); }
 .hud-banner[data-tone='info'] .banner-title { color: var(--ink); }

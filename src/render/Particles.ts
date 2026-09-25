@@ -677,7 +677,9 @@ export class Particles {
   explosion(pos: Vector3, size: number, vel: Vector3, shell = true): void {
     const s = size;
     const sq = Math.sqrt(s);
-    this.add.spawn({ pos, vel: _v.copy(vel).multiplyScalar(0.5), life: 0.12, size0: 8 * s, size1: 16 * s, color0: FLASH, color1: FLASH_END, alpha0: 1, alpha1: 0, hot: 1 });
+    // Big blasts open on a fire-coloured flash (a white one blooms into a featureless ball).
+    const big = s >= 5;
+    this.add.spawn({ pos, vel: _v.copy(vel).multiplyScalar(0.5), life: 0.12, size0: (big ? 6 : 8) * s, size1: (big ? 12 : 16) * s, color0: big ? FIRE_HOT : FLASH, color1: big ? FIRE_MID : FLASH_END, alpha0: 1, alpha1: 0, hot: 1 });
     const n = Math.round(14 * sq);
     for (let i = 0; i < n; i++) {
       fxRng.unitVector(_v2);
@@ -739,7 +741,7 @@ export class Particles {
   rockBurst(pos: Vector3, radius: number, split = false): void {
     // Light tan dust so the cloud reads against black space. A split sheds a thin shell of dust
     // from the surface instead of a thick cloud, so the pieces flying apart stay visible.
-    for (let i = 0, n = split ? 9 : 14; i < n; i++) {
+    for (let i = 0, n = split ? 11 : 14; i < n; i++) {
       fxRng.unitVector(_v2);
       this.smoke.spawn({
         pos: _v.copy(pos).addScaledVector(_v2, split ? radius * fxRng.range(0.7, 1.0) : fxRng.range(0, radius * 0.6)),
@@ -749,7 +751,7 @@ export class Particles {
         size1: radius * (split ? 1.6 : 2.6),
         color0: C(0xb4a288, 1),
         color1: C(0x7a6c5c, 1),
-        alpha0: split ? 0.4 : 0.7,
+        alpha0: split ? 0.55 : 0.7,
         alpha1: 0,
         drag: 0.7,
       });
@@ -777,7 +779,7 @@ export class Particles {
       this.sparks.spawn(pos, _v2, fxRng.range(0.3, 0.7), C(0xffb070, 1));
     }
     if (this.debris) {
-      for (let i = 0; i < 18; i++) {
+      for (let i = 0, n = split ? 26 : 18; i < n; i++) {
         fxRng.unitVector(_v2).multiplyScalar(fxRng.range(25, 70));
         this.debris.spawn(true, _v.copy(pos).addScaledVector(_v2, 0.05), _v2, fxRng.range(0.4, 1.1) * radius * 0.3, fxRng.range(3, 6));
       }

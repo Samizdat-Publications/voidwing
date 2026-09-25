@@ -51,8 +51,9 @@ interface Look {
 const LOOKS: Record<string, Look> = {
   player: { flare: new Color(0.35, 0.7, 1).multiplyScalar(0.9), trail: new Color(0.25, 0.65, 1).multiplyScalar(0.8), width: 0.9, flareSize: 2.2, shield: 0x55ccff },
   wingman: { flare: new Color(0.45, 0.6, 1).multiplyScalar(2.8), trail: new Color(0.3, 0.45, 1).multiplyScalar(1.2), width: 1.3, flareSize: 4.5, shield: 0x6f8cff },
-  razor: { flare: new Color(1, 0.45, 0.2).multiplyScalar(4), trail: new Color(1, 0.33, 0.12).multiplyScalar(3.2), width: 2.8, flareSize: 8, shield: 0xff5a3a },
-  maul: { flare: new Color(1, 0.5, 0.2).multiplyScalar(4), trail: new Color(1, 0.4, 0.1).multiplyScalar(3), width: 5.2, flareSize: 16, shield: 0xff7a2a },
+  // Enemy engines glow without blooming over the hull (a tail chase looks straight into them).
+  razor: { flare: new Color(1, 0.45, 0.2).multiplyScalar(2.4), trail: new Color(1, 0.33, 0.12).multiplyScalar(3.2), width: 2.8, flareSize: 5, shield: 0xff5a3a },
+  maul: { flare: new Color(1, 0.5, 0.2).multiplyScalar(2.4), trail: new Color(1, 0.4, 0.1).multiplyScalar(3), width: 5.2, flareSize: 10, shield: 0xff7a2a },
 };
 
 const FALLBACK_EXHAUST: Record<string, Vector3[]> = {
@@ -177,7 +178,11 @@ export class FX implements EffectsApi {
       _c.set(BOLTS[ship.spec.bolt].color).multiplyScalar(3.5);
       this.particles.glow(origin, ship.kind === 'maul' ? 6 : 3.2, _c, 0.05);
     });
-    ev.on('turretFired', ({ position }) => this.particles.glow(position, 13, _c.setRGB(3.5, 1.8, 0.6), 0.09));
+    ev.on('turretFired', ({ position }) => {
+      // Muzzle flash plus a puff of gun smoke, so the carrier's flak reads as guns firing.
+      this.particles.glow(position, 20, _c.setRGB(3.5, 1.8, 0.6), 0.12);
+      this.particles.puff(position, _v.set(0, 0, 0));
+    });
     ev.on('asteroidDestroyed', ({ position, radius, tier }) => this.particles.rockBurst(position, radius, tier < 3));
     ev.on('asteroidVaporized', ({ position, radius }) => this.particles.rockBurst(position, radius * 0.6));
     ev.on('shieldHit', ({ entity, point }) => {
@@ -324,7 +329,11 @@ export class FX implements EffectsApi {
         this.missileTrails.delete(m);
       }
       // The player's lasers get a glowing head so their fire blooms even seen from behind.
-      w.projectiles.forEachHead('player', (x, y, z) => this.particles.glow(_p.set(x, y, z), 2.4, BOLT_GLOW));
+      w.projectiles.forEachHead('player', (x, y, z) => {
+        const d = _p.set(x, y, z).distanceTo(this.camPos);
+        // Fades out down range, so the glow never runs up into the ship you are shooting.
+        if (d < 200) this.particles.glow(_p, 2.4 * (1 - d / 240), BOLT_GLOW);
+      });
       // Fade the player's own ship while the target or lead dot is behind it on screen.
       const p = w.player;
       if (p && p.alive) {
@@ -359,12 +368,14 @@ export class FX implements EffectsApi {
         let maxScale = s.team === 'player' ? 1.8 : 3.6;
         if (capAround && s.position.distanceTo(cap.position) < 750) maxScale = s.team === 'player' ? 1.25 : 2;
         // The size floor eases off with range, so a far fighter still looks farther than a near one.
-        const floor = 0.06 - 0.025 * Math.min(1, Math.max(0, (d - 300) / 700));
+        const floor = 0.085 - 0.035 * Math.min(1, Math.max(0, (d - 250) / 750));
         const scale = Math.min(maxScale, Math.max(1, (floor * d * tanHalf) / s.radius));
         s.model.scale.setScalar(scale);
         s.viewScale = scale;
-        const far = Math.min(1.8, Math.max(0, (d - 180) / 330));
-        setRimBoost(s.model, (s === target ? 2.8 + pulse : 1) + far);
+        // The target's rim brightens a little and pulses; far ships get a touch more edge. Kept
+        // under the bloom threshold so the hull shape reads instead of blooming into a spark.
+        const far = Math.min(0.3, Math.max(0, (d - 300) / 900));
+        setRimBoost(s.model, (s === target ? 1.3 + 0.25 * pulse : 1) + far);
       }
       this.dimGeneratorCores(cameraPos);
     }
@@ -402,7 +413,7 @@ export class FX implements EffectsApi {
       fx.exhausts[i].getWorldPosition(_p);
       this.trails.push(fx.trails[i], _p);
       this.particles.glow(_p, look.flareSize * thrust * flicker * flareScale, look.flare);
-      if (ship.boosting) this.particles.glow(_p, look.flareSize * 2.2, _c.copy(look.flare).multiplyScalar(0.35));
+      if (ship.boosting) this.particles.glow(_p, look.flareSize * (ship.team === 'enemy' ? 1.5 : 2.2), _c.copy(look.flare).multiplyScalar(0.35));
     }
     // The player's nozzles sit in the middle of the view: keep them from blooming into white discs.
     const glowGain = ship.kind === 'player' ? 0.3 : 0.6;

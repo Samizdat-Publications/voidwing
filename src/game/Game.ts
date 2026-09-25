@@ -169,7 +169,7 @@ export class Game {
     this.sky.bake(this.engine.renderer);
     scene.background = this.sky.background;
     // A backdrop, not the subject: keep the nebula well below the action and the HUD.
-    scene.backgroundIntensity = 0.62;
+    scene.backgroundIntensity = 0.55;
     // The nebula doubles as image-based lighting, so hulls pick up its colours.
     scene.environment = this.sky.environment;
     scene.environmentIntensity = 1.15;
@@ -478,6 +478,7 @@ export class Game {
     this.hud.setMode('dead');
     this.setState('dying');
     this.rig.startDeath(p ? p.position.clone() : new Vector3(), this.killerPos);
+    this.mission.showBanner('VOID ONE DOWN', this.deathCause, 'warn', 2.8);
     this.rig.addTrauma(0.8);
     this.timeScale = 0.35;
   }

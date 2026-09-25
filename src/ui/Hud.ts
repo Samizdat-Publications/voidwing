@@ -58,6 +58,7 @@ const _v = new Vector3();
 const _v2 = new Vector3();
 const _q = new Quaternion();
 const _proj2: Proj = { x: 0, y: 0, behind: false, onScreen: false, depth: 0 };
+const _proj3: Proj = { x: 0, y: 0, behind: false, onScreen: false, depth: 0 };
 
 const esc = (s: string): string =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
@@ -351,7 +352,7 @@ export class Hud {
     }
 
     // Comms: last three live messages.
-    const live = mission.messages.filter((m) => world.time - m.time < m.duration).slice(-3);
+    const live = mission.messages.filter((m) => world.time - m.time < m.duration).slice(-2);
     const key = live.map((m) => m.time).join(',');
     if (key !== this.lastCommsKey) {
       this.lastCommsKey = key;
@@ -400,7 +401,7 @@ export class Hud {
     this.arrowSpots.length = 0;
     // World labels never print over the HUD panels, or through the banner while it is up.
     for (const r of this.panelRects) this.labelRects.push(r);
-    if (mission.banner) this.labelRects.push({ x: this.w * 0.2, y: this.h * 0.17 - 6, w: this.w * 0.6, h: 80 });
+    if (mission.banner) this.labelRects.push({ x: this.w * 0.25, y: this.h * 0.17 - 6, w: this.w * 0.5, h: 64 });
     this.drawLowHull(player);
     if (this.shieldFlash > 0) {
       // Cyan pulse around the screen edge: your shield just took a hit.
@@ -432,7 +433,7 @@ export class Hud {
     for (const e of contacts) {
       this.project(e.position, camera, pr);
       if (!pr.onScreen) continue;
-      const s = clamp((e.radius * this.viewScale(e) / Math.max(1, pr.depth)) * focal * 1.3, 7, e.objective ? 46 : 90);
+      const s = clamp((e.radius * this.viewScale(e) / Math.max(1, pr.depth)) * focal * 1.15, 7, e.objective ? 46 : 90);
       const r = { x: pr.x - s, y: pr.y - s, w: s * 2, h: s * 2 };
       this.labelRects.push(r);
       this.bracketRects.set(e, r);
@@ -451,10 +452,10 @@ export class Hud {
       const isTarget = e === target;
       if (pr.onScreen) {
         // Generator markers stay compact even when you are right on top of one.
-        const size = clamp((e.radius * this.viewScale(e) / Math.max(1, pr.depth)) * focal * 1.3, isTarget ? 16 : d > 600 ? 7 : 9, e.objective ? 46 : 90);
+        const size = clamp((e.radius * this.viewScale(e) / Math.max(1, pr.depth)) * focal * 1.15, isTarget ? 16 : d > 600 ? 7 : 9, e.objective ? 46 : 90);
         // A marker whose ship sits behind a HUD panel is hidden with it.
         if (!isTarget && this.insidePanel(pr.x, pr.y)) continue;
-        const underBanner = !!mission.banner && pr.y > this.h * 0.17 - 10 && pr.y < this.h * 0.17 + 80 && Math.abs(pr.x - this.w / 2) < this.w * 0.3;
+        const underBanner = !!mission.banner && pr.y > this.h * 0.17 - 10 && pr.y < this.h * 0.17 + 64 && Math.abs(pr.x - this.w / 2) < this.w * 0.25;
         g.globalAlpha = underBanner ? 0.35 : 1;
         if (pr.x > shipRect.x - size && pr.x < shipRect.x + shipRect.w + size && pr.y > shipRect.y - size && pr.y < shipRect.y + shipRect.h + size) overlap = true;
         if (!isTarget && !e.objective && d > 1600) {
@@ -592,11 +593,20 @@ export class Hud {
     }
 
     // Incoming enemy missiles: a pulsing triangle on screen, and a threat chevron around the sight
-    // pointing at every missile that is tracking the player.
+    // pointing at every missile that is tracking the player (only the nearest carries the label).
+    let nearestThreat: Entity | null = null;
+    let nearestThreatD = Infinity;
+    for (const m of world.missiles.list) {
+      if (!m.alive || m.team === 'player' || m.target !== player) continue;
+      const d = m.position.distanceTo(player.position);
+      if (d < nearestThreatD) [nearestThreat, nearestThreatD] = [m, d];
+    }
     for (const m of world.missiles.list) {
       if (!m.alive || m.team === 'player') continue;
       this.project(m.position, camera, pr);
-      if (pr.onScreen) {
+      // A missile just leaving its launcher sits on that ship's bracket: the bracket says enough.
+      const onBracket = [...this.bracketRects.values()].some((r) => pr.x > r.x && pr.x < r.x + r.w && pr.y > r.y && pr.y < r.y + r.h);
+      if (pr.onScreen && !onBracket && m.position.distanceTo(player.position) < 900) {
         const r = 8 + Math.sin(this.time * 20) * 2;
         g.strokeStyle = COLORS.warn;
         g.lineWidth = 2;
@@ -607,7 +617,7 @@ export class Hud {
         g.closePath();
         g.stroke();
       }
-      if (m.target === player) this.drawThreat(m.position, player, 136, COLORS.warn, 'MISSILE');
+      if (m.target === player) this.drawThreat(m.position, camera, 136, COLORS.warn, m === nearestThreat ? 'MISSILE' : '');
     }
 
     // Lead: a yellow diamond where to shoot, tied to the target when it sits ahead of it.
@@ -700,9 +710,7 @@ export class Hud {
 
     // Damage direction: an orange glow on the screen edge facing the hit and an arc around the sight.
     if (this.damageFlash > 0 && !this.damageSourceVisible(camera)) {
-      _q.copy(player.quaternion).invert();
-      _v.copy(this.damageDir).sub(player.position).applyQuaternion(_q);
-      const ang = Math.atan2(-_v.y, _v.x);
+      const { ang } = this.screenAngle(this.damageDir, camera);
       const ex = this.w / 2 + Math.cos(ang) * this.w * 0.5;
       const ey = this.h / 2 + Math.sin(ang) * this.h * 0.5;
       const rad = Math.min(this.w, this.h) * 0.5;
@@ -806,12 +814,24 @@ export class Hud {
   }
 
   /** A chevron on a ring around the sight pointing at a threat (works on and off screen). */
-  private drawThreat(pos: Vector3, player: Ship, radius: number, color: string, label: string): void {
+  /**
+   * Screen direction (radians, from the screen centre) toward a world point, with the edge arrows'
+   * convention: something behind you points to the nearer side edge. Threat chevrons and the
+   * damage cue use it too, so all three always agree.
+   */
+  private screenAngle(pos: Vector3, camera: PerspectiveCamera): { ang: number; behind: boolean } {
+    const pr = this.project(pos, camera, _proj3);
+    let dx = pr.x - this.w / 2, dy = pr.y - this.h / 2;
+    if (pr.behind) {
+      if (Math.abs(dx) < this.w * 0.15) dx = (dx >= 0 ? 1 : -1) * this.w * 0.3;
+      dy = Math.min(dy, this.h * 0.1);
+    }
+    return { ang: Math.atan2(dy, dx), behind: pr.behind };
+  }
+
+  private drawThreat(pos: Vector3, camera: PerspectiveCamera, radius: number, color: string, label: string): void {
     const g = this.g;
-    _q.copy(player.quaternion).invert();
-    _v.copy(pos).sub(player.position).applyQuaternion(_q);
-    const ang = Math.atan2(-_v.y, _v.x);
-    const behind = _v.z > 0;
+    const { ang, behind } = this.screenAngle(pos, camera);
     const pulse = 0.65 + 0.35 * Math.sin(this.time * 16);
     const x = this.w / 2 + Math.cos(ang) * radius, y = this.h / 2 + Math.sin(ang) * radius;
     g.save();
@@ -831,10 +851,12 @@ export class Hud {
     g.fill();
     g.restore();
     g.globalAlpha = 1;
-    g.font = '700 13px "Chakra Petch", system-ui, sans-serif';
-    const lx = this.w / 2 + Math.cos(ang) * (radius + 30), ly = this.h / 2 + Math.sin(ang) * (radius + 30) + 4;
-    this.labelText(behind ? `${label} BEHIND` : label, lx, ly, color, 'center', pulse);
-    g.font = '600 11px "Chakra Petch", "Rajdhani", system-ui, sans-serif';
+    if (label) {
+      g.font = '700 13px "Chakra Petch", system-ui, sans-serif';
+      const lx = this.w / 2 + Math.cos(ang) * (radius + 30), ly = this.h / 2 + Math.sin(ang) * (radius + 30) + 4;
+      this.labelText(behind ? `${label} BEHIND` : label, lx, ly, color, 'center', pulse);
+      g.font = '600 11px "Chakra Petch", "Rajdhani", system-ui, sans-serif';
+    }
   }
 
   private drawCrosshair(x: number, y: number, inner = 14): void {
