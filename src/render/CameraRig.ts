@@ -47,13 +47,19 @@ export class CameraRig {
     ship.forward(this.aimDir);
   }
 
-  startDeath(at: Vector3): void {
+  startDeath(at: Vector3, killer: Vector3 | null = null): void {
     this.mode = 'death';
     this.deathLook.copy(at);
     // Pull well back from the wreck so its fireball does not fill the screen.
     _look.subVectors(this.camera.position, at);
     const d = Math.max(_look.length(), 1);
     this.deathPos.copy(at).addScaledVector(_look.normalize(), Math.max(d, 70)).add(_off.set(0, 14, 0));
+    if (killer && killer.distanceTo(at) < 900) {
+      // Frame the wreck and whoever shot you: look between them from the far side of the wreck.
+      this.deathLook.lerpVectors(at, killer, 0.35);
+      _look.subVectors(at, killer).normalize();
+      this.deathPos.copy(at).addScaledVector(_look, 95).add(_off.set(0, 26, 0));
+    }
   }
 
   update(dt: number, ship: Ship | null): void {

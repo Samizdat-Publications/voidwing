@@ -91,6 +91,8 @@ class SpaceDust {
     geo.setAttribute('color', this.aCol);
     this.lines = new LineSegments(geo, new LineBasicMaterial({ vertexColors: true, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false }));
     this.lines.frustumCulled = false;
+    // Layer 1: the main camera sees it, the zoomed target view does not.
+    this.lines.layers.set(1);
     scene.add(this.lines);
   }
 

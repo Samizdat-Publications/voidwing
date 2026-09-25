@@ -1,4 +1,4 @@
-import { DirectionalLight, HemisphereLight, Vector3 } from 'three';
+import { DirectionalLight, HemisphereLight, PerspectiveCamera, Vector3 } from 'three';
 import { Engine } from '../core/Engine';
 import { Input } from '../core/Input';
 import { Rng, formatTime } from '../core/math';
@@ -55,7 +55,10 @@ export class Game {
   private readonly userSettings: UserSettings = loadSettings();
   timeScale = 1;
   private deathCause = '';
+  /** Zoomed camera for the targeting computer view in the HUD. */
+  private readonly targetCam = new PerspectiveCamera(10, 1.8, 1, 60000);
   private lastRockHit = -99;
+  private killerPos: Vector3 | null = null;
   fps = 60;
   frameMs = 16.7;
   private last = 0;
@@ -71,6 +74,7 @@ export class Game {
     this.engine.renderer.info.autoReset = false;
     if (new URLSearchParams(location.search).has('nosound')) this.audio.enabled = false;
     this.rig = new CameraRig(this.engine.camera);
+    this.engine.camera.layers.enable(1);
     this.hud = new Hud(container);
     this.screens = new Screens(container);
     this.seed = Number(this.params.get('seed') ?? 1337) | 0;
@@ -156,6 +160,7 @@ export class Game {
     this.world.events.on('destroyed', ({ entity, source }) => {
       if (entity === this.world.player) {
         this.deathCause = this.describeKiller(source);
+        this.killerPos = source && source.alive ? source.position.clone() : null;
         this.onPlayerDeath();
       }
     });
@@ -365,7 +370,7 @@ export class Game {
     this.controller.enabled = false;
     this.hud.setMode('dead');
     this.setState('dying');
-    this.rig.startDeath(p ? p.position.clone() : new Vector3());
+    this.rig.startDeath(p ? p.position.clone() : new Vector3(), this.killerPos);
     this.rig.addTrauma(0.8);
     this.timeScale = 0.35;
   }
@@ -486,7 +491,39 @@ export class Game {
     // Count draw calls across all post passes for the whole frame.
     this.engine.renderer.info.reset();
     this.post.render(dt);
+    this.renderTargetView();
     this.input.endFrame();
+  }
+
+  /** Targeting computer: a zoomed view of the current target, drawn into the HUD frame. */
+  private renderTargetView(): void {
+    const p = this.world?.player;
+    const t = p && p.alive ? p.target : null;
+    const rect = t && t.alive && this.state === 'playing' ? this.hud.targetViewRect() : null;
+    if (!p || !t || !rect) return;
+    const r = this.engine.renderer;
+    const cam = this.targetCam;
+    // Look from just ahead of the player so its own hull never blocks the view.
+    _v.subVectors(t.position, p.position);
+    const dist = _v.length();
+    _v.multiplyScalar(1 / Math.max(dist, 1));
+    cam.position.copy(p.position).addScaledVector(_v, p.radius * 3);
+    cam.up.copy(this.engine.camera.up).applyQuaternion(this.engine.camera.quaternion);
+    cam.lookAt(t.position);
+    const model = (t as Ship).model;
+    const vis = t.radius * (model ? model.scale.x : 1) * 1.5;
+    cam.fov = Math.min(40, Math.max(0.6, (2 * Math.atan(vis / Math.max(dist, 1)) * 180) / Math.PI));
+    cam.aspect = rect.width / rect.height;
+    cam.near = Math.max(1, dist - vis * 6);
+    cam.far = 60000;
+    cam.updateProjectionMatrix();
+    const x = rect.left, y = this.engine.height - rect.bottom;
+    r.setScissorTest(true);
+    r.setScissor(x, y, rect.width, rect.height);
+    r.setViewport(x, y, rect.width, rect.height);
+    r.render(this.engine.scene, cam);
+    r.setScissorTest(false);
+    r.setViewport(0, 0, this.engine.width, this.engine.height);
   }
 
   private update(dt: number): void {

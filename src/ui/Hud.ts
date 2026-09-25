@@ -96,6 +96,7 @@ export class Hud {
   private readonly targetClass: HTMLElement;
   private readonly targetDist: HTMLElement;
   private readonly targetHull: HTMLElement;
+  private readonly targetView: HTMLElement;
   private readonly targetShield: HTMLElement;
   private hitMarker = 0;
   private killMarker = 0;
@@ -175,6 +176,15 @@ export class Hud {
     this.targetShield = el('div', 'tp-fill', th);
     const hh = el('div', 'tp-bar tp-hull', this.targetPanel);
     this.targetHull = el('div', 'tp-fill', hh);
+    // Targeting computer: the game renders a zoomed view of the target into this frame.
+    this.targetView = el('div', 'hud-target-view hidden', this.root);
+    el('div', 'tv-label', this.targetView, 'TARGET VIEW');
+  }
+
+  /** Screen rect of the target view frame, or null when there is nothing to show. */
+  targetViewRect(): DOMRect | null {
+    if (this.mode !== 'combat' || this.targetView.classList.contains('hidden') || this.root.classList.contains('hidden')) return null;
+    return this.targetView.getBoundingClientRect();
   }
 
   show(): void {
@@ -314,7 +324,10 @@ export class Hud {
     this.set('thr', Math.round(player.throttle * 100), (v) => (this.throttleFill.style.width = `${v}%`));
 
     const t = player.target;
-    this.set('tpVis', t && player.alive ? 1 : 0, (v) => this.targetPanel.classList.toggle('hidden', v === 0));
+    this.set('tpVis', t && player.alive ? 1 : 0, (v) => {
+      this.targetPanel.classList.toggle('hidden', v === 0);
+      this.targetView.classList.toggle('hidden', v === 0);
+    });
     if (t) {
       this.set('tpName', t.name, (v) => (this.targetName.textContent = String(v)));
       this.set('tpClass', CLASS_LABEL[t.kind] ?? '', (v) => (this.targetClass.textContent = String(v)));
@@ -465,7 +478,9 @@ export class Hud {
           g.font = '700 11px "Chakra Petch", system-ui, sans-serif';
           const tw = g.measureText(text).width + 12;
           const cxr = pr.x + ss, cyr = pr.y - ss;
-          const tx = Math.min(cxr + 2, this.w - tw - 6), ty = Math.max(4, cyr - 17);
+          const locked = lockTag === 'LOCK';
+          const tx = locked ? clamp(pr.x - tw / 2, 6, this.w - tw - 6) : Math.min(cxr + 2, this.w - tw - 6);
+          const ty = Math.max(4, cyr - (locked ? 21 : 17));
           if (lockTag === 'LOCK') {
             g.strokeStyle = color;
             g.lineWidth = 1.2;
@@ -901,7 +916,7 @@ export class Hud {
     this.panelRectsAge = 0;
     const base = this.root.getBoundingClientRect();
     const rects: Rect[] = [];
-    for (const el of this.root.querySelectorAll<HTMLElement>('.hud-objective, .hud-comms, .hud-target, .hud-status, .hud-weapons')) {
+    for (const el of this.root.querySelectorAll<HTMLElement>('.hud-objective, .hud-comms, .hud-target, .hud-target-view, .hud-status, .hud-weapons')) {
       const r = el.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       rects.push({ x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height });

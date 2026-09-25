@@ -15,8 +15,9 @@ Die and it is mission failed; retry from the current wave.
 
 - `npm install`, then `npm run dev` (Vite dev server on http://127.0.0.1:5173).
 - `npm run build` type-checks and builds to `dist/`; `npm run preview` serves the build.
-- `npm run playtest -- --scenario win|lose|tour` runs the headless Playwright self-test
-  (screenshots and console log in `test-output/`).
+- `npm run playtest -- --scenario win|lose|ui|showcase|smoke` runs the headless Playwright
+  self-test (screenshots, console log and report.json in `test-output/`). Add `--god` for the win
+  run and `--preview` to test the production build (`--nobuild` reuses dist/ for parallel runs).
 - `npm run assets` rebuilds every GLB from `blender_scripts/` with Blender in background mode
   (set `BLENDER_PATH` if Blender is not at the default install path).
 
@@ -27,7 +28,7 @@ URL flags for testing: `?test` exposes `window.__VW` hooks, `?god` makes the pla
 
 | Input | Action |
 | --- | --- |
-| Mouse | Aim. The ship turns toward the aim ring; click the game to capture the mouse |
+| Mouse | Aim. The ship turns toward the white steering ring; click the game to capture the mouse |
 | Left mouse | Lasers (hold) |
 | Right mouse or F | Fire a missile once the lock-on tone goes solid |
 | W / S | Throttle up / down |
@@ -71,7 +72,9 @@ Do them in order. After each milestone run the self-test loop below.
 3. [x] Feel: animation, camera, particles, screen shake, hit feedback, sound, music.
    (6 critic rounds, docs/critic/m3-round*.md; shots in docs/progress/m3-feel. Reticle and HUD
    layout issues carried into M4.)
-4. [ ] UI: title, HUD, pause, game over and victory screens with a consistent designed look.
+4. [x] UI: title, HUD, pause, game over and victory screens with a consistent designed look.
+   (11 critic rounds, docs/critic/m4-round*.md; shots in docs/progress/m4-ui. World readability,
+   carrier art and the asteroid split carried into M5.)
 5. [ ] Polish and perf: steady 60 fps on a mid-range laptop, no console errors.
 
 Done means: a first-time player can start, understand the controls, play, and reach both win and
@@ -199,3 +202,26 @@ Newest last. Each entry: date, decision, reason.
   to the UI milestone, which starts with it.
 - 2026-09-25: UI font is Chakra Petch (OFL-1.1) bundled from npm (`@fontsource/chakra-petch`),
   latin subsets only. It is the only font.
+- 2026-09-25: UI colour language: cyan = you and wingmen, red = enemies only, amber = objectives,
+  orange = danger to you (warnings, damage, missiles), yellow = the lead dot, white = the gun
+  cross and the steering ring. Wingmen are cyan carets, never circles.
+- 2026-09-25: Mouse-aim camera (as in War Thunder's mouse aim): the chase camera looks along the
+  aim direction, not the ship's nose, so what you steer at stays centred above your ship while the
+  gun cross swings onto it. Reason: with a nose-following camera, targets you were turning toward
+  landed on your own ship (M4 critic rounds 3 and 4).
+- 2026-09-25: The reticle carries one tag per target (lock state, type, range) pinned to its
+  bracket; locked targets get a solid frame and a filled red LOCK tag; the steering ring hides on
+  the lead dot; the player's ship fades to 30 % when a marker is behind it; labels dodge markers,
+  the banner and the ship.
+- 2026-09-25: Targeting computer view: a zoomed camera renders the current target into a framed
+  box under the target panel (speed dust sits on layer 1 so it is never magnified). Reason: a
+  fighter flying at you at 300 to 600 m is a few pixels in any chase view.
+- 2026-09-25: Collision assist: the player's turn (not the aim) bends around rocks about 1.3 s
+  ahead, reusing the AI avoidance with a tight margin.
+- 2026-09-25: Enemy AI leads with the real bolt speed (bolts inherit the ship's forward speed),
+  which made them accurate; Razor and Maul damage were retuned for it and wave 1 became a warm-up
+  (two Razors, then two more). Difficulty is on the title screen and applies at once.
+- 2026-09-25: Playtest bots: the win bot throttles up and flies in god mode with a hull floor; the
+  lose bot neither shoots nor dodges (it holds its course).
+- 2026-09-25: M4 closed after 11 critic rounds; the worst remaining items were world readability
+  at range, the carrier art and the asteroid split, carried into M5 (polish) and its own loop.
