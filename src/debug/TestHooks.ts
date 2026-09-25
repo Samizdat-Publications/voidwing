@@ -61,6 +61,8 @@ export function installTestHooks(game: Game): void {
         capital: w ? { state: w.capital.state, generatorsLeft: w.capital.generatorsAlive, finale: Math.round(w.capital.finaleProgress * 1000) / 1000 } : null,
         stats: game.mission ? { ...game.mission.stats } : null,
         fps: Math.round(game.fps),
+        quality: game.quality.level,
+        worstFrameMs: Math.round(game.takeWorstFrame()),
         frameMs: Math.round(game.frameMs * 100) / 100,
         render: game.renderStats(),
         radPerPx: PLAYER.mouseRadPerPx * game.settings.sensitivity,
@@ -77,20 +79,21 @@ export function installTestHooks(game: Game): void {
       const ctrl = game.controller;
       if (!w || !p || !ctrl) return null;
       const fwd = p.forward(new Vector3());
-      let best = null as null | { pos: Vector3; dist: number; score: number };
+      let best = null as null | { pos: Vector3; dist: number; score: number; radius: number };
       if (keep && showcaseRock) {
         if (!showcaseRock.alive) return null;
-        best = { pos: showcaseRock.position.clone(), dist: showcaseRock.position.distanceTo(p.position), score: 0 };
+        best = { pos: showcaseRock.position.clone(), dist: showcaseRock.position.distanceTo(p.position), score: 0, radius: showcaseRock.radius };
       } else {
         showcaseRock = null;
         for (const a of w.asteroids.list) {
           if (!a.alive || a.tier === 0 || a.radius > 32 || a.radius < 12) continue;
           const d = a.position.distanceTo(p.position);
-          if (d > maxDist || d < 70) continue;
+          // Not too close: the approach needs room to line up.
+          if (d > maxDist || d < 320) continue;
           const ang = fwd.angleTo(_dir.copy(a.position).sub(p.position).normalize());
           const score = ang + d / 1500;
           if (!best || score < best.score) {
-            best = { pos: a.position.clone(), dist: d, score };
+            best = { pos: a.position.clone(), dist: d, score, radius: a.radius };
             showcaseRock = a;
           }
         }
@@ -99,7 +102,7 @@ export function installTestHooks(game: Game): void {
       _dir.copy(best.pos).sub(p.position).normalize();
       localAngles(p.quaternion, _dir, _a);
       localAngles(p.quaternion, ctrl.aimDir, _b);
-      return { dYaw: _a.yaw - _b.yaw, dPitch: _a.pitch - _b.pitch, dist: best.dist, noseErr: fwd.angleTo(_dir) };
+      return { dYaw: _a.yaw - _b.yaw, dPitch: _a.pitch - _b.pitch, dist: best.dist, noseErr: fwd.angleTo(_dir), radius: best.radius };
     },
     showcaseRockAlive() {
       return !!showcaseRock && showcaseRock.alive;

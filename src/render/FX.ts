@@ -175,7 +175,7 @@ export class FX implements EffectsApi {
       this.particles.glow(origin, ship.kind === 'maul' ? 6 : 3.2, _c, 0.05);
     });
     ev.on('turretFired', ({ position }) => this.particles.glow(position, 13, _c.setRGB(3.5, 1.8, 0.6), 0.09));
-    ev.on('asteroidDestroyed', ({ position, radius }) => this.particles.rockBurst(position, radius));
+    ev.on('asteroidDestroyed', ({ position, radius, tier }) => this.particles.rockBurst(position, radius, tier < 3));
     ev.on('asteroidVaporized', ({ position, radius }) => this.particles.rockBurst(position, radius * 0.6));
     ev.on('shieldHit', ({ entity, point }) => {
       const fx = this.ships.get(entity as Ship);
@@ -330,8 +330,8 @@ export class FX implements EffectsApi {
   /** Needs the camera, so the game calls it separately after the camera moves. */
   updateView(dt: number, cameraPos: Vector3, viewportHeight: number, fov: number): void {
     this.camPos.copy(cameraPos);
-    // Readability at dogfight range: other ships are drawn up to 3.6x larger with distance
-    // (visual only; hit spheres keep their real size), and their team rim glows brighter so a far
+    // Readability at dogfight range: other ships are drawn up to 3.6x larger with distance (the
+    // player's bolts count most of that as hit radius), and their team rim glows brighter so a far
     // fighter reads as a lit silhouette. The player's current target pulses on top of that.
     if (this.world) {
       const target = this.world.player?.target ?? null;
@@ -339,14 +339,34 @@ export class FX implements EffectsApi {
       for (const s of this.world.ships) {
         if (s.kind === 'player' || !s.alive) continue;
         const d = s.position.distanceTo(cameraPos);
-        s.model.scale.setScalar(Math.min(3.6, Math.max(1, 1 + (d - 200) / 300)));
-        const far = Math.min(1.8, Math.max(0, (d - 220) / 330));
+        const scale = Math.min(3.6, Math.max(1, 1 + (d - 90) / 250));
+        s.model.scale.setScalar(scale);
+        s.viewScale = scale;
+        const far = Math.min(1.8, Math.max(0, (d - 180) / 330));
         setRimBoost(s.model, (s === target ? 2.8 + pulse : 1) + far);
       }
+      this.dimGeneratorCores(cameraPos);
     }
     this.trails.update(dt, cameraPos);
     this.speedDust.update(dt, cameraPos);
     this.particles.setViewport(viewportHeight, fov);
+  }
+
+  private genCore: { mat: MeshStandardMaterial; base: number } | null | undefined;
+
+  /** A generator core you fly right up to dims, so its glow never swallows the gun cross. */
+  private dimGeneratorCores(cameraPos: Vector3): void {
+    const gens = this.world?.capital.generators;
+    if (!gens || !gens.length) return;
+    if (this.genCore === undefined) {
+      const core = gens[0].object.getObjectByName('Gen_Core') as Mesh | undefined;
+      const mat = core?.material as MeshStandardMaterial | undefined;
+      this.genCore = mat && mat.isMeshStandardMaterial ? { mat, base: mat.emissiveIntensity } : null;
+    }
+    if (!this.genCore) return;
+    let near = Infinity;
+    for (const g of gens) if (g.alive) near = Math.min(near, g.position.distanceTo(cameraPos));
+    this.genCore.mat.emissiveIntensity = this.genCore.base * Math.min(1, Math.max(0.4, (near - 40) / 260));
   }
 
   private updateShip(ship: Ship, fx: ShipFx, dt: number): void {

@@ -14,6 +14,8 @@ export class Engine {
   width = 1;
   height = 1;
   pixelRatio = 1;
+  /** Cap on the device pixel ratio, set by the graphics quality level. */
+  maxPixelRatio = 1.5;
   private readonly resizeListeners: Array<(w: number, h: number) => void> = [];
 
   constructor(readonly container: HTMLElement) {
@@ -38,7 +40,7 @@ export class Engine {
   resize(): void {
     this.width = Math.max(1, this.container.clientWidth);
     this.height = Math.max(1, this.container.clientHeight);
-    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+    this.pixelRatio = Math.min(window.devicePixelRatio || 1, this.maxPixelRatio);
     this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(this.width, this.height, false);
     this.camera.aspect = this.width / this.height;

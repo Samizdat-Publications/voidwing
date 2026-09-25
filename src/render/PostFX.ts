@@ -36,6 +36,16 @@ export class PostFX {
     this.composer.setSize(w, h);
   }
 
+  /** MSAA samples for the HDR scene buffers (0 turns multisampling off). */
+  setSamples(n: number): void {
+    for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+      if (rt.samples === n) continue;
+      rt.samples = n;
+      // Disposing drops the GL buffers; they are rebuilt with the new sample count on next use.
+      rt.dispose();
+    }
+  }
+
   /** Brief exposure and bloom kick for the carrier's final blast (0..1, decays in about 0.6 s). */
   flash(amount: number): void {
     this.flashAmount = Math.max(this.flashAmount, amount);

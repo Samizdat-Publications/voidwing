@@ -1,4 +1,4 @@
-import { DirectionalLight, HemisphereLight, PerspectiveCamera, Vector3 } from 'three';
+import { DirectionalLight, Group, HemisphereLight, PerspectiveCamera, Vector3 } from 'three';
 import { Engine } from '../core/Engine';
 import { Input } from '../core/Input';
 import { Rng, formatTime } from '../core/math';
@@ -6,10 +6,13 @@ import { installTestHooks } from '../debug/TestHooks';
 import { AudioEngine } from '../audio/Audio';
 import { Music } from '../audio/Music';
 import { SoundDirector } from '../audio/SoundDirector';
-import { Assets } from '../render/Assets';
+import { Assets, type ModelName } from '../render/Assets';
 import { CameraRig } from '../render/CameraRig';
 import { FX } from '../render/FX';
+import { TEAM_RIM, applyTeamRim } from '../render/materials';
 import { PostFX } from '../render/PostFX';
+import { AdaptiveQuality, QUALITY, type QualityLevel } from '../render/Quality';
+import { ShieldBubble } from '../render/ShieldFX';
 import { Sky } from '../render/Sky';
 import { Hud } from '../ui/Hud';
 import { Screens, type EndStats } from '../ui/Screens';
@@ -53,6 +56,8 @@ export class Game {
   readonly settings: Settings = { sensitivity: 1, invertY: false, autoLevel: true, difficulty: 'normal' };
   /** Everything the settings screen edits (persisted), mirrored into `settings` and the audio mix. */
   private readonly userSettings: UserSettings = loadSettings();
+  /** Graphics level, and the frame-time watcher behind the Auto setting. */
+  readonly quality: AdaptiveQuality;
   timeScale = 1;
   private deathCause = '';
   /** Zoomed camera for the targeting computer view in the HUD. */
@@ -61,6 +66,8 @@ export class Game {
   private killerPos: Vector3 | null = null;
   fps = 60;
   frameMs = 16.7;
+  /** Longest single frame while flying since the test hooks last read it (hitch tracking). */
+  private worstFrame = 0;
   private last = 0;
   private readonly params = new URLSearchParams(location.search);
   private readonly seed: number;
@@ -81,6 +88,9 @@ export class Game {
     this.godMode = this.params.has('god');
     const diff = this.params.get('diff');
     if (diff === 'easy' || diff === 'normal' || diff === 'hard') this.userSettings.difficulty = diff;
+    const q = this.params.get('quality');
+    if (q === 'auto' || q === 'high' || q === 'medium' || q === 'low') this.userSettings.graphics = q;
+    this.quality = new AdaptiveQuality(this.userSettings.graphics);
     this.applySettings(this.userSettings);
     this.screens.bindSettings(this.userSettings);
     this.screens.onSettings = (s) => {
@@ -121,6 +131,7 @@ export class Game {
     if (this.assets.missing.length) console.info('VOID WING: greybox stand-ins for', this.assets.missing.join(', '));
     this.buildWorld();
     this.enterTitle();
+    await this.prewarm();
     this.last = performance.now();
     requestAnimationFrame((t) => this.loop(t));
   }
@@ -149,6 +160,7 @@ export class Game {
     this.effects.attach(this.world);
     this.post = new PostFX(this.engine.renderer, scene, this.engine.camera);
     this.post.setSize(this.engine.width, this.engine.height, this.engine.pixelRatio);
+    this.post.setSamples(QUALITY[this.quality.level].samples);
     this.sound = new SoundDirector(this.audio, this.engine.camera);
     this.sound.attach(this.world);
     this.world.difficulty = this.settings.difficulty;
@@ -203,6 +215,62 @@ export class Game {
     this.world.events.on('fired', ({ ship }) => {
       if (ship === this.world.player) this.rig.addTrauma(0.012);
     });
+  }
+
+  /**
+   * Compile every shader and upload the models before the title appears, so the first bomber,
+   * carrier or enemy shield never stalls a frame mid-fight. Hidden objects (the carrier) are
+   * compiled too; ships spawned later get their own material copies, so one of each is added.
+   */
+  private async prewarm(): Promise<void> {
+    const r = this.engine.renderer;
+    const scene = this.engine.scene;
+    const cam = this.engine.camera;
+    const group = new Group();
+    const add = (name: ModelName, x: number, rim: number, team: 'player' | 'enemy' | null, variant?: 'wingman') => {
+      const m = this.assets.model(name, variant);
+      if (team) applyTeamRim(m, TEAM_RIM[team], rim);
+      m.position.set(x, 0, -150);
+      group.add(m);
+    };
+    add('kestrel', -60, 0.3, 'player');
+    add('kestrel', -30, 0.9, 'player', 'wingman');
+    add('razor', 0, 1.9, 'enemy');
+    add('maul', 30, 1.9, 'enemy');
+    add('missile', 60, 0, null);
+    const bubble = new ShieldBubble(0x4fd8ff, 2.4, 0);
+    bubble.mesh.position.set(0, 20, -150);
+    bubble.mesh.scale.setScalar(12);
+    group.add(bubble.mesh);
+    cam.updateMatrixWorld();
+    group.position.copy(cam.position);
+    group.quaternion.copy(cam.quaternion);
+    scene.add(group);
+    const cap = this.world.capital.object;
+    const capVisible = cap.visible;
+    cap.visible = true;
+    try {
+      await r.compileAsync(scene, cam);
+    } catch {
+      // Shaders then compile on first use instead.
+    }
+    // One frame through the post chain uploads the geometry and textures as well.
+    this.post.render(0);
+    cap.visible = capVisible;
+    scene.remove(group);
+  }
+
+  /** Render at a quality level: resolution cap and MSAA. */
+  private applyQuality(level: QualityLevel): void {
+    const q = QUALITY[level];
+    if (this.engine.maxPixelRatio !== q.maxPixelRatio) {
+      this.engine.maxPixelRatio = q.maxPixelRatio;
+      this.engine.resize();
+    }
+    this.post?.setSamples(q.samples);
+    this.screens.setGraphicsNote(
+      this.quality.auto ? `Auto: rendering at ${q.label}. Steps down if the frame rate drops.` : `Rendering at ${q.label}.`,
+    );
   }
 
   /** Park a display ship for the title screen. */
@@ -317,6 +385,7 @@ export class Game {
     this.settings.autoLevel = s.autoLevel;
     this.settings.difficulty = s.difficulty;
     this.world?.setDifficulty(s.difficulty);
+    this.applyQuality(this.quality.choose(s.graphics));
     this.audio.volume.master = s.master;
     this.audio.volume.music = s.music;
     this.audio.volume.sfx = s.sfx;
@@ -475,6 +544,13 @@ export class Game {
     this.music.setDucked(this.state === 'paused');
   }
 
+  /** Longest frame since the last call, then reset (test hooks). */
+  takeWorstFrame(): number {
+    const w = this.worstFrame;
+    this.worstFrame = 0;
+    return w;
+  }
+
   renderStats(): { calls: number; triangles: number } {
     const info = this.engine.renderer.info.render;
     return { calls: info.calls, triangles: info.triangles };
@@ -482,12 +558,18 @@ export class Game {
 
   private loop(now: number): void {
     requestAnimationFrame((t) => this.loop(t));
-    const rawDt = Math.min(0.1, Math.max(0, (now - this.last) / 1000));
+    const elapsed = Math.max(0, now - this.last);
+    const rawDt = Math.min(0.1, elapsed / 1000);
     this.last = now;
+    if (this.state === 'playing' || this.state === 'finale') this.worstFrame = Math.max(this.worstFrame, elapsed);
     this.frameMs += (rawDt * 1000 - this.frameMs) * 0.05;
     this.fps = 1000 / Math.max(1, this.frameMs);
     const dt = Math.min(rawDt, 1 / 20);
     this.update(dt);
+    if (this.state === 'playing' || this.state === 'finale') {
+      const next = this.quality.sample(rawDt * 1000, rawDt);
+      if (next) this.applyQuality(next);
+    }
     // Count draw calls across all post passes for the whole frame.
     this.engine.renderer.info.reset();
     this.post.render(dt);
@@ -511,7 +593,8 @@ export class Game {
     cam.up.copy(this.engine.camera.up).applyQuaternion(this.engine.camera.quaternion);
     cam.lookAt(t.position);
     const model = (t as Ship).model;
-    const vis = t.radius * (model ? model.scale.x : 1) * 1.5;
+    // A generator is small on a huge hull: frame its pylon and some of the carrier around it.
+    const vis = t.kind === 'generator' ? Math.max(80, t.radius * 4) : t.radius * (model ? model.scale.x : 1) * 1.5;
     cam.fov = Math.min(40, Math.max(0.6, (2 * Math.atan(vis / Math.max(dist, 1)) * 180) / Math.PI));
     cam.aspect = rect.width / rect.height;
     cam.near = Math.max(1, dist - vis * 6);

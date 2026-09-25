@@ -11,11 +11,14 @@ import {
   Vector3,
 } from 'three';
 import { clamp, fxRng, leadPoint } from '../core/math';
+import { applyTeamRim } from '../render/materials';
 import { ShieldBubble } from '../render/ShieldFX';
 import { ARENA, CAPITAL } from './config';
 import { Entity } from './Entity';
 import type { Ship } from './Ship';
 import type { World } from './World';
+
+const CARRIER_RIM = new Color(0xff6a36);
 
 export interface CapitalLayout {
   /** Local positions of the shield generator orbs. */
@@ -196,6 +199,8 @@ export class CapitalShip {
   constructor(world: World) {
     this.layout = world.assets.capitalLayout();
     this.hull = world.assets.model('leviathan');
+    // A faint, tight warm rim keeps the hull's silhouette readable on its shadowed side.
+    applyTeamRim(this.hull, CARRIER_RIM, 0.16, 3.2);
     this.object.add(this.hull);
     this.homePos = ARENA.capitalPos.clone();
     this.object.position.copy(this.homePos);
@@ -467,7 +472,7 @@ export class CapitalShip {
         _v.normalize();
         const toward = _v.dot(toPlayer);
         if (toward > 0) _v.addScaledVector(toPlayer, -toward * 1.2).normalize();
-        s.vel.addScaledVector(_v, 70);
+        s.vel.addScaledVector(_v, 100);
         s.spin *= 3;
       }
       // The light strips went dark at the break-up; without sections (greybox) the hull just vanishes.
@@ -512,9 +517,9 @@ export class CapitalShip {
     for (const l of this.lightMeshes()) l.visible = false;
     // name, drift (vy, vz), which ends face a neighbour (-1 = min z, +1 = max z).
     const defs: [string, number, number, number[]][] = [
-      ['Leviathan_Bow', 5, -26, [1]],
+      ['Leviathan_Bow', 8, -40, [1]],
       ['Leviathan_Mid', -2, 1, [-1, 1]],
-      ['Leviathan_Stern', -5, 22, [-1]],
+      ['Leviathan_Stern', -8, 36, [-1]],
     ];
     for (const [name, vy, vz, endSides] of defs) {
       const obj = this.hull.getObjectByName(name);
@@ -534,7 +539,7 @@ export class CapitalShip {
         center,
         vel: new Vector3(fxRng.range(-4, 4), vy, vz),
         axis: fxRng.unitVector(new Vector3()),
-        spin: fxRng.range(0.05, 0.12),
+        spin: fxRng.range(0.08, 0.16),
         ends,
       });
     }

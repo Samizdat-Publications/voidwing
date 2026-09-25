@@ -1,4 +1,5 @@
 import type { Difficulty } from '../game/config';
+import type { GraphicsSetting } from '../render/Quality';
 
 /** Everything the settings screen can change. Persisted per browser. */
 export interface UserSettings {
@@ -6,6 +7,7 @@ export interface UserSettings {
   invertY: boolean;
   autoLevel: boolean;
   difficulty: Difficulty;
+  graphics: GraphicsSetting;
   master: number;
   music: number;
   sfx: number;
@@ -16,6 +18,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   invertY: false,
   autoLevel: true,
   difficulty: 'normal',
+  graphics: 'auto',
   master: 0.8,
   music: 0.55,
   sfx: 0.85,
@@ -34,6 +37,7 @@ export function loadSettings(): UserSettings {
     if (typeof saved.invertY === 'boolean') s.invertY = saved.invertY;
     if (typeof saved.autoLevel === 'boolean') s.autoLevel = saved.autoLevel;
     if (saved.difficulty === 'easy' || saved.difficulty === 'normal' || saved.difficulty === 'hard') s.difficulty = saved.difficulty;
+    if (saved.graphics === 'auto' || saved.graphics === 'high' || saved.graphics === 'medium' || saved.graphics === 'low') s.graphics = saved.graphics;
     for (const k of ['master', 'music', 'sfx'] as const) {
       const v = saved[k];
       if (typeof v === 'number') s[k] = Math.min(1, Math.max(0, v));

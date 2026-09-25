@@ -48,9 +48,9 @@ function eachMaterial(root: Object3D, fn: (m: Material) => void): void {
 }
 
 /** Apply a team rim to every standard material under an object. */
-export function applyTeamRim(root: Object3D, color: Color, strength = 1.1): void {
+export function applyTeamRim(root: Object3D, color: Color, strength = 1.1, power = 2.4): void {
   eachMaterial(root, (m) => {
-    if ((m as MeshStandardMaterial).isMeshStandardMaterial) addRim(m as MeshStandardMaterial, color, strength);
+    if ((m as MeshStandardMaterial).isMeshStandardMaterial) addRim(m as MeshStandardMaterial, color, strength, power);
   });
 }
 

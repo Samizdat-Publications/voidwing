@@ -65,6 +65,7 @@ const params = new URLSearchParams({ test: '1', seed: opt('seed', '1337') });
 if (flag('god')) params.set('god', '1');
 if (opt('diff')) params.set('diff', opt('diff'));
 if (opt('phase')) params.set('phase', opt('phase'));
+if (opt('quality')) params.set('quality', opt('quality'));
 await page.goto(`${baseUrl}?${params}`);
 await page.waitForFunction(() => window.__VW && window.__VW.state().gameState === 'title', null, { timeout: 60000 });
 log('title screen reached');
@@ -79,7 +80,17 @@ async function shot(label) {
   shots.push({ file, label, t: (Date.now() - t0) / 1000, phase: st.phase, gameState: st.gameState });
   log('shot', file);
 }
-const state = () => page.evaluate(() => window.__VW.state());
+// Worst single frame (ms) while flying: the game hands over its worst frame since the last read.
+let worstWindow = 0;
+let worstOverall = 0;
+const state = async () => {
+  const st = await page.evaluate(() => window.__VW.state());
+  if (st && typeof st.worstFrameMs === 'number') {
+    worstWindow = Math.max(worstWindow, st.worstFrameMs);
+    worstOverall = Math.max(worstOverall, st.worstFrameMs);
+  }
+  return st;
+};
 
 const perf = [];
 const audioSeen = { maxLevel: 0, modes: new Set(), states: new Set() };
@@ -153,10 +164,16 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
   await sleep(1300);
   await shot('boost');
   await page.keyboard.up('Shift');
+  // Ease off the throttle so the ship can turn onto a rock instead of orbiting it.
+  await page.keyboard.down('KeyS');
+  await sleep(450);
+  await page.keyboard.up('KeyS');
   const deadline = Date.now() + timeoutMs;
   let fired = false;
   let picked = false;
   let boosting = false;
+  let braking = false;
+  let lastLog = 0;
   while (Date.now() < deadline) {
     const a = await page.evaluate(([md, keep]) => window.__VW.asteroidAim(md, keep), [maxDist, picked]);
     const st = await state();
@@ -166,12 +183,16 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
       if (picked && !(await page.evaluate(() => window.__VW.showcaseRockAlive()))) {
         if (fired) await page.mouse.up();
         fired = false;
-        await sleep(220);
+        await sleep(450);
         await shot('asteroid_split');
       }
       break;
     }
     picked = true;
+    if (Date.now() - lastLog > 1000) {
+      lastLog = Date.now();
+      log(`showcase rock ${a.dist.toFixed(0)} m, nose ${a.noseErr.toFixed(3)}, firing ${fired}`);
+    }
     // Boost in until close, so the split happens near the camera.
     const wantBoost = a.dist > 620;
     if (wantBoost !== boosting) {
@@ -184,8 +205,16 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
     bot.mx += dx;
     bot.my += dy;
     await page.mouse.move(bot.mx, bot.my);
-    // Fire from outside the collision assist's look-ahead, or the ship steers off the rock.
-    const want = a.noseErr < 0.05 && a.dist < 300;
+    // Close and off target: slow down to tighten the turn rather than circling the rock.
+    const wantBrake = a.noseErr > 0.35 && a.dist < 280;
+    if (wantBrake !== braking) {
+      if (wantBrake) await page.keyboard.down('KeyS');
+      else await page.keyboard.up('KeyS');
+      braking = wantBrake;
+    }
+    // Fire from outside the collision assist's look-ahead, or the ship steers off the rock. The
+    // tolerance follows the rock's size on screen.
+    const want = a.noseErr < Math.max(0.05, Math.atan(a.radius / Math.max(a.dist, 1)) * 0.7) && a.dist < 320;
     if (want !== fired) {
       if (want) await page.mouse.down();
       else await page.mouse.up();
@@ -195,6 +224,7 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
   }
   if (fired) await page.mouse.up();
   if (boosting) await page.keyboard.up('Shift');
+  if (braking) await page.keyboard.up('KeyS');
 }
 
 function track(st) {
@@ -236,7 +266,8 @@ async function runMission({ passive = false } = {}) {
     const inPhase = (Date.now() - phaseEnteredAt) / 1000;
     if (Date.now() - lastPerf > 3000 && st.gameState === 'playing') {
       lastPerf = Date.now();
-      perf.push({ t: (Date.now() - t0) / 1000, fps: st.fps, frameMs: st.frameMs, calls: st.render.calls, tris: st.render.triangles, phase: st.phase });
+      perf.push({ t: (Date.now() - t0) / 1000, fps: st.fps, frameMs: st.frameMs, worstMs: Math.round(worstWindow), calls: st.render.calls, tris: st.render.triangles, phase: st.phase, quality: st.quality });
+      worstWindow = 0;
     }
     if (st.gameState === 'playing') {
       await shotOnce('launch', st.phase === 'intro' && inPhase > 1.5);
@@ -256,7 +287,7 @@ async function runMission({ passive = false } = {}) {
       await shotOnce('wave_cleared', st.phase === 'break' && inPhase > 1);
       await shotOnce('capital_arrival', st.phase === 'capital' && inPhase > 3.5);
       if (st.capital && firstGeneratorLeft < 0 && st.phase === 'capital') firstGeneratorLeft = st.capital.generatorsLeft;
-      await shotOnce('generator_attack', st.phase === 'capital' && st.target && st.target.kind === 'generator' && st.aim && st.aim.dist < 650);
+      await shotOnce('generator_attack', st.phase === 'capital' && st.capital?.state === 'active' && st.target && st.target.kind === 'generator' && st.aim && st.aim.dist < 650);
       // Wait for the banner to finish fading in.
       if (!generatorDownAt && st.phase === 'capital' && st.capital && st.capital.generatorsLeft < firstGeneratorLeft) generatorDownAt = Date.now();
       await shotOnce('generator_down', generatorDownAt > 0 && Date.now() - generatorDownAt > 700);
@@ -387,6 +418,7 @@ const report = {
     avgFps: fpsVals.length ? Math.round(fpsVals.reduce((a, b) => a + b, 0) / fpsVals.length) : null,
     maxCalls: perf.length ? Math.max(...perf.map((p) => p.calls)) : null,
     maxTris: perf.length ? Math.max(...perf.map((p) => p.tris)) : null,
+    worstFrameMs: Math.round(worstOverall),
   },
   console: { errors, warnings, count: consoleLog.length },
   audio: { maxLevel: audioSeen.maxLevel, modes: [...audioSeen.modes], states: [...audioSeen.states] },
@@ -394,7 +426,7 @@ const report = {
 };
 fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2));
 fs.writeFileSync(path.join(outDir, 'console.log'), consoleLog.map((m) => `[${m.t.toFixed(1)}] ${m.type}: ${m.text}`).join('\n'));
-log(`outcome=${outcome} errors=${errors.length} warnings=${warnings.length} shots=${shots.length} avgFps=${report.perf.avgFps} minFps=${report.perf.minFps} audioMax=${audioSeen.maxLevel} music=${[...audioSeen.modes].join(',')}`);
+log(`outcome=${outcome} errors=${errors.length} warnings=${warnings.length} shots=${shots.length} avgFps=${report.perf.avgFps} minFps=${report.perf.minFps} worstFrame=${report.perf.worstFrameMs}ms quality=${finalState?.quality} audioMax=${audioSeen.maxLevel} music=${[...audioSeen.modes].join(',')}`);
 log('out:', outDir);
 await browser.close();
 await server.close?.();

@@ -732,32 +732,34 @@ export class Particles {
   }
 
   /** Sunlit dust, rock chunks and a puff of sparks when an asteroid breaks. */
-  rockBurst(pos: Vector3, radius: number): void {
-    // Light tan dust so the cloud reads against black space.
-    for (let i = 0; i < 14; i++) {
+  /** A rock bursting. `split`: it breaks into pieces, so the dust keeps the middle clear. */
+  rockBurst(pos: Vector3, radius: number, split = false): void {
+    // Light tan dust so the cloud reads against black space. A split sheds a thin shell of dust
+    // from the surface instead of a thick cloud, so the pieces flying apart stay visible.
+    for (let i = 0, n = split ? 9 : 14; i < n; i++) {
       fxRng.unitVector(_v2);
       this.smoke.spawn({
-        pos: _v.copy(pos).addScaledVector(_v2, fxRng.range(0, radius * 0.6)),
-        vel: _v2.multiplyScalar(fxRng.range(6, 20)).clone(),
+        pos: _v.copy(pos).addScaledVector(_v2, split ? radius * fxRng.range(0.7, 1.0) : fxRng.range(0, radius * 0.6)),
+        vel: _v2.multiplyScalar(fxRng.range(6, 20) * (split ? 1.5 : 1)).clone(),
         life: fxRng.range(1.0, 1.8),
-        size0: radius * 0.9,
-        size1: radius * 2.6,
+        size0: radius * (split ? 0.45 : 0.9),
+        size1: radius * (split ? 1.6 : 2.6),
         color0: C(0xb4a288, 1),
         color1: C(0x7a6c5c, 1),
-        alpha0: 0.7,
+        alpha0: split ? 0.4 : 0.7,
         alpha1: 0,
         drag: 0.7,
       });
     }
     // A faint sunlit glow in the cloud (additive), so the burst reads even against dark rock.
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0, n = split ? 4 : 8; i < n; i++) {
       fxRng.unitVector(_v2);
       this.add.spawn({
         pos: _v.copy(pos).addScaledVector(_v2, fxRng.range(0, radius * 0.5)),
         vel: _v2.multiplyScalar(fxRng.range(4, 14)).clone(),
         life: fxRng.range(0.8, 1.4),
-        size0: radius * 1.1,
-        size1: radius * 3.2,
+        size0: radius * (split ? 0.6 : 1.1),
+        size1: radius * (split ? 1.8 : 3.2),
         color0: C(0xd8c0a0, 0.4),
         color1: C(0x806a50, 0.12),
         alpha0: 0.9,
@@ -765,7 +767,8 @@ export class Particles {
         drag: 0.7,
       });
     }
-    this.add.spawn({ pos, vel: _v.set(0, 0, 0), life: 0.4, size0: radius * 2, size1: radius * 4, color0: C(0xffe2b0, 2.4), color1: C(0x805030, 0.4), alpha0: 0.9, alpha1: 0, hot: 0.7 });
+    if (split) this.add.spawn({ pos, vel: _v.set(0, 0, 0), life: 0.22, size0: radius * 1.1, size1: radius * 2.2, color0: C(0xffe2b0, 2.0), color1: C(0x805030, 0.4), alpha0: 0.9, alpha1: 0, hot: 0.7 });
+    else this.add.spawn({ pos, vel: _v.set(0, 0, 0), life: 0.4, size0: radius * 2, size1: radius * 4, color0: C(0xffe2b0, 2.4), color1: C(0x805030, 0.4), alpha0: 0.9, alpha1: 0, hot: 0.7 });
     for (let i = 0; i < 14; i++) {
       fxRng.unitVector(_v2).multiplyScalar(fxRng.range(20, 60));
       this.sparks.spawn(pos, _v2, fxRng.range(0.3, 0.7), C(0xffb070, 1));

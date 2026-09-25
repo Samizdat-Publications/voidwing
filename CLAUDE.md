@@ -225,3 +225,24 @@ Newest last. Each entry: date, decision, reason.
   lose bot neither shoots nor dodges (it holds its course).
 - 2026-09-25: M4 closed after 11 critic rounds; the worst remaining items were world readability
   at range, the carrier art and the asteroid split, carried into M5 (polish) and its own loop.
+- 2026-09-25: Carrier model rebuilt for M5 (`capital_ship.py`): flight-deck wings, truss arms and
+  lattice pylons carrying the four generators, stepped dorsal tiers, a bridge tower, sponsons, ribs,
+  trenches, an engine block with five nozzles and a keel fin, replacing the random greebles. The
+  hardpoints, shield and section splits are unchanged, so no game code had to follow.
+- 2026-09-25: The carrier hull gets a faint, tight warm rim (0.16, power 3.2) so its silhouette
+  holds on the shadowed side; a stronger team-red rim washed the lit hull pink. The break-up is
+  faster (bow and stern at about 40 m/s, 100 m/s blast impulse) so three sections read apart.
+- 2026-09-25: Far ships are magnified from 90 m (up to 3.6x at about 740 m) instead of 200 m, and
+  the player's bolts count 60 % of that magnification as extra hit radius, so hits land on what is
+  drawn. Enemy bolts and missiles keep real sizes.
+- 2026-09-25: Asteroid splits read as separate rocks: pieces start side by side on evenly spread
+  headings, fly apart at 16 to 26 m/s and glow hot (instance colours above 1 feed the emissive
+  term); a split sheds a thin dust shell instead of a cloud that hid the pieces.
+- 2026-09-25: The targeting view frames a generator with its pylon and part of the hull (at least
+  80 m), and the generator core dims as you close in so it never blooms over the gun cross.
+- 2026-09-25: Graphics setting Auto / High / Medium / Low (pixel-ratio cap 1.5 / 1 / 0.75, MSAA
+  4 / 2 / 0). Auto starts at High and steps down one level when the median frame of a ~2.5 s window
+  is slower than 18.5 ms; it never steps back up, so it cannot oscillate. `?quality=` overrides.
+- 2026-09-25: Shaders are pre-compiled (`compileAsync`) with the carrier shown and one of each
+  ship, a missile and a shield bubble added, then one frame renders through the post chain before
+  the title appears. The playtest reports the worst single frame while flying.

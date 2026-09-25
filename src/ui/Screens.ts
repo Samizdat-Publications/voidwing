@@ -1,4 +1,5 @@
 import { DIFFICULTY, type Difficulty } from '../game/config';
+import type { GraphicsSetting } from '../render/Quality';
 import type { UserSettings } from './SettingsStore';
 
 export type ScreenName = 'loading' | 'title' | 'howto' | 'settings' | 'pause' | 'gameover' | 'victory' | 'none';
@@ -131,6 +132,12 @@ export class Screens {
              <button data-value="easy">${DIFFICULTY.easy.label}</button><button data-value="normal">${DIFFICULTY.normal.label}</button><button data-value="hard">${DIFFICULTY.hard.label}</button></div></div>
          </div>
          <div class="settings-group">
+           <div class="group-title">Display</div>
+           <div class="setting split"><span>Graphics</span><div class="seg" data-seg="graphics">
+             <button data-value="auto">Auto</button><button data-value="high">High</button><button data-value="medium">Medium</button><button data-value="low">Low</button></div></div>
+           <div class="setting-note" data-note="graphics"></div>
+         </div>
+         <div class="settings-group">
            <div class="group-title">Sound</div>
            <label class="setting"><span>Master volume</span><input type="range" min="0" max="1" step="0.05" data-setting="master"><output data-out="master"></output></label>
            <label class="setting"><span>Music</span><input type="range" min="0" max="1" step="0.05" data-setting="music"><output data-out="music"></output></label>
@@ -210,7 +217,9 @@ export class Screens {
       }
       const seg = el.closest('.seg button') as HTMLElement | null;
       if (seg && this.settings) {
-        this.settings.difficulty = seg.dataset.value as Difficulty;
+        const key = (seg.closest('.seg') as HTMLElement).dataset.seg;
+        if (key === 'graphics') this.settings.graphics = seg.dataset.value as GraphicsSetting;
+        else this.settings.difficulty = seg.dataset.value as Difficulty;
         this.syncSettings();
         this.onSettings(this.settings);
         this.onAction('toggle');
@@ -255,7 +264,16 @@ export class Screens {
       t.setAttribute('aria-pressed', String(on));
       t.classList.toggle('on', on);
     });
-    this.root.querySelectorAll<HTMLElement>('.seg button').forEach((b) => b.classList.toggle('on', b.dataset.value === s.difficulty));
+    this.root.querySelectorAll<HTMLElement>('.seg').forEach((seg) => {
+      const value = seg.dataset.seg === 'graphics' ? s.graphics : s.difficulty;
+      seg.querySelectorAll<HTMLElement>('button').forEach((b) => b.classList.toggle('on', b.dataset.value === value));
+    });
+  }
+
+  /** The line under the Graphics setting (what Auto is rendering at). */
+  setGraphicsNote(text: string): void {
+    const note = this.root.querySelector('[data-note="graphics"]');
+    if (note) note.textContent = text;
   }
 
   show(name: ScreenName, stats?: EndStats): void {

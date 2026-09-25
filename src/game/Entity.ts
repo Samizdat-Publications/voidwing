@@ -27,6 +27,8 @@ export abstract class Entity {
   hullFloor = 0;
   /** Damage multiplier applied to incoming damage. */
   damageTaken = 1;
+  /** How much larger the renderer draws this than its real size (far ships are magnified). */
+  viewScale = 1;
 
   constructor(
     readonly team: Team,

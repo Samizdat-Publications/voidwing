@@ -9,6 +9,7 @@ import {
   InstancedMesh,
   Material,
   Matrix4,
+  MeshStandardMaterial,
   Quaternion,
   Sphere,
   Vector3,
@@ -61,6 +62,27 @@ const _pv = new Matrix4();
 const _white = new Color(1, 1, 1);
 const _flash = new Color();
 
+/**
+ * Instance colours above 1 (a laser hit flash, a fresh fragment) also glow, so a hot fracture
+ * reads on the shadowed side of a rock too.
+ */
+function addHotGlow(m: Material): void {
+  const sm = m as MeshStandardMaterial;
+  if (!sm.isMeshStandardMaterial || sm.userData.hotGlow) return;
+  sm.userData.hotGlow = true;
+  sm.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <emissivemap_fragment>',
+      `#include <emissivemap_fragment>
+      #ifdef USE_COLOR
+        totalEmissiveRadiance += max(vColor.rgb - 1.0, 0.0) * 0.12;
+      #endif`,
+    );
+  };
+  sm.customProgramCacheKey = () => 'rock-hot';
+  sm.needsUpdate = true;
+}
+
 export class AsteroidField {
   readonly group = new Group();
   readonly list: Asteroid[] = [];
@@ -75,6 +97,7 @@ export class AsteroidField {
 
   constructor(private readonly variants: AsteroidVariant[]) {
     for (const v of variants) {
+      for (const m of Array.isArray(v.material) ? v.material : [v.material]) addHotGlow(m);
       const mesh = new InstancedMesh(v.geometry, v.material, MAX_INSTANCES);
       mesh.instanceMatrix.setUsage(DynamicDrawUsage);
       mesh.instanceColor = new InstancedBufferAttribute(new Float32Array(MAX_INSTANCES * 3), 3);
@@ -145,7 +168,7 @@ export class AsteroidField {
       _q.setFromAxisAngle(a.spinAxis, a.spinRate * dt);
       a.quaternion.premultiply(_q);
       if (a.flash > 0) a.flash = Math.max(0, a.flash - dt * 6);
-      if (a.hot > 0) a.hot = Math.max(0, a.hot - dt * 0.8);
+      if (a.hot > 0) a.hot = Math.max(0, a.hot - dt * 0.55);
     }
     if (this.list.length > 400 && this.destroyedCount > 60) {
       // Compact the list now and then.
@@ -256,12 +279,17 @@ export class AsteroidField {
     if (a.tier >= 3) return;
     const childTier = (a.tier + 1) as Tier;
     const n = a.tier === 1 ? fxRng.int(2, 3) : 2;
+    // The pieces leave on evenly spread headings and start side by side inside the old rock, so
+    // the split reads at once as separate rocks rather than one lump.
+    const axis = fxRng.unitVector(new Vector3());
+    const side = new Vector3(Math.abs(axis.x) < 0.9 ? 1 : 0, Math.abs(axis.x) < 0.9 ? 0 : 1, 0).cross(axis).normalize();
+    const phase = fxRng.range(0, Math.PI * 2);
     for (let i = 0; i < n; i++) {
-      const dir = fxRng.unitVector(new Vector3());
+      const dir = side.clone().applyAxisAngle(axis, phase + (i / n) * Math.PI * 2 + fxRng.range(-0.25, 0.25));
+      dir.addScaledVector(axis, fxRng.range(-0.25, 0.25)).normalize();
       const r = a.radius * fxRng.range(0.45, 0.6);
-      const pos = a.position.clone().addScaledVector(dir, a.radius * 0.5);
-      // Fragments drift apart slowly so the break-up reads on screen.
-      const vel = a.velocity.clone().addScaledVector(dir, fxRng.range(9, 20) * (childTier === 3 ? 1.3 : 1));
+      const pos = a.position.clone().addScaledVector(dir, a.radius * 0.55);
+      const vel = a.velocity.clone().addScaledVector(dir, fxRng.range(16, 26) * (childTier === 3 ? 1.3 : 1));
       const child = this.add(childTier, pos, r, vel);
       child.spinRate *= 2.5;
       child.hot = 1;

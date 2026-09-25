@@ -159,12 +159,14 @@ export class Projectiles {
     let hitShield = false;
 
     const candidates = world.collidablesFor(team);
+    const playerBolt = KINDS[this.kind[i]] === 'player';
     const segLen = _p0.distanceTo(_p1);
     const midX = (_p0.x + _p1.x) * 0.5, midY = (_p0.y + _p1.y) * 0.5, midZ = (_p0.z + _p1.z) * 0.5;
     for (let k = 0; k < candidates.length; k++) {
       const e = candidates[k];
       if (!e.alive) continue;
-      const r = e.radius + vis.hitRadius;
+      // The player's bolts count most of a far ship's magnification, so hits land on what is drawn.
+      const r = e.radius * (playerBolt ? 1 + (e.viewScale - 1) * 0.6 : 1) + vis.hitRadius;
       const dx = e.position.x - midX, dy = e.position.y - midY, dz = e.position.z - midZ;
       const reach = segLen * 0.5 + r;
       if (dx * dx + dy * dy + dz * dz > reach * reach) continue;
