@@ -37,9 +37,17 @@ body { font-family: var(--font); color: var(--ink); user-select: none; }
 .banner-sub { font-size: 18px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; }
 .hud-banner[data-tone='warn'] .banner-title { color: var(--foe); }
 .hud-banner[data-tone='good'] .banner-title { color: var(--friend); }
-.hud-warnings { position: absolute; top: 12%; left: 0; right: 0; text-align: center; }
-.warn { display: inline-block; margin: 3px auto; padding: 4px 14px; color: #fff; background: rgba(255, 60, 70, 0.75); font-weight: 700; letter-spacing: 0.12em; animation: blink 0.6s steps(2) infinite; }
+.hud-warnings { position: absolute; top: 12%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.warn { padding: 6px 18px; color: #fff; background: rgba(255, 60, 70, 0.82); font-weight: 700; font-size: 18px; letter-spacing: 0.14em; }
+.warn-missile { font-size: 22px; background: rgba(255, 36, 52, 0.92); box-shadow: 0 0 26px rgba(255, 36, 52, 0.6); animation: blink 0.4s steps(2) infinite; }
+.warn-hull { font-size: 20px; box-shadow: 0 0 18px rgba(255, 60, 70, 0.45); animation: blink 0.8s steps(2) infinite; }
+.warn-bounds { background: rgba(255, 170, 40, 0.88); color: #1a1000; }
+.warn-info { font-size: 14px; background: rgba(255, 190, 61, 0.86); color: #1a1000; }
 @keyframes blink { 50% { opacity: 0.45; } }
+/* Finale camera and death camera: only the story panels stay up. */
+.hud-status, .hud-weapons, .hud-target, .hud-warnings, .hud-comms, .hud-canvas { transition: opacity 0.35s; }
+.hud.cinematic .hud-status, .hud.cinematic .hud-weapons, .hud.cinematic .hud-target, .hud.cinematic .hud-warnings,
+.hud.dead .hud-status, .hud.dead .hud-weapons, .hud.dead .hud-target, .hud.dead .hud-warnings, .hud.dead .hud-comms { opacity: 0; }
 
 .hud-status { bottom: 18px; left: 18px; width: 300px; }
 .bar-row { display: grid; grid-template-columns: 64px 1fr 40px; align-items: center; gap: 8px; margin: 4px 0; font-size: 13px; }
@@ -75,6 +83,7 @@ body { font-family: var(--font); color: var(--ink); user-select: none; }
 .tp-label { font-size: 11px; color: var(--muted); letter-spacing: 0.12em; }
 .tp-name { font-size: 18px; font-weight: 700; color: var(--foe); }
 .hud-target[data-kind='obj'] .tp-name { color: var(--objective); }
+.tp-class { font-size: 11px; letter-spacing: 0.14em; color: var(--muted); margin-top: 1px; }
 .tp-dist { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 .tp-bar { height: 5px; background: rgba(255, 255, 255, 0.08); margin-top: 4px; position: relative; }
 .tp-fill { position: absolute; inset: 0 auto 0 0; background: var(--foe); }
@@ -99,6 +108,7 @@ h2.good { color: var(--friend); }
 .controls { margin-top: 22px; display: grid; grid-template-columns: 1fr; gap: 4px; text-align: left; font-size: 14px; }
 .ctl { display: grid; grid-template-columns: 150px 1fr; }
 .key { color: var(--friend); font-weight: 700; }
+.cause { color: var(--foe); font-size: 16px; letter-spacing: 0.08em; text-transform: uppercase; margin: -8px 0 18px; }
 .stats { display: grid; grid-template-columns: repeat(5, auto); gap: 18px; justify-content: center; margin-bottom: 18px; }
 .stat span { display: block; color: var(--muted); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; }
 .stat b { font-size: 22px; }

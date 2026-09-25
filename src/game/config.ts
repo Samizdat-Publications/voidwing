@@ -59,11 +59,11 @@ export const SPECS: Record<ShipKind, ShipSpec> = {
     bolt: 'enemy', boltSpeed: 700, boltDamage: 3.2, boltLife: 1.6, missiles: 0, score: 100,
   },
   maul: {
-    // Model drawn at 1.2x.
-    displayName: 'Maul', radius: 16, hull: 130, shield: 60, shieldRegen: 8, shieldDelay: 5,
+    // Model drawn at 1.45x: a bomber should look heavy next to a Razor.
+    displayName: 'Maul', radius: 19.3, hull: 130, shield: 60, shieldRegen: 8, shieldDelay: 5,
     minSpeed: 30, cruiseSpeed: 86, boostSpeed: 150, accel: 30, grip: 1.8,
     pitchRate: 0.85, yawRate: 0.8, rollRate: 1.6, angResponse: 6,
-    guns: [v(-4.3, -1.7, -15.1), v(4.3, -1.7, -15.1)], fireInterval: 0.32,
+    guns: [v(-5.2, -2.05, -18.3), v(5.2, -2.05, -18.3)], fireInterval: 0.32,
     bolt: 'heavy', boltSpeed: 480, boltDamage: 9, boltLife: 2.4, missiles: 2, score: 250,
   },
 };

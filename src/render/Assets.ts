@@ -42,7 +42,7 @@ const FILES: Record<string, string> = {
 };
 
 const WINGMAN_TRIM = new Color(0x4d7dff);
-export const ENEMY_SCALE = { razor: 1.35, maul: 1.2 };
+export const ENEMY_SCALE = { razor: 1.35, maul: 1.45 };
 const _v = new Vector3();
 const _q = new Quaternion();
 const _q2 = new Quaternion();
@@ -128,6 +128,13 @@ export class Assets {
         const mesh = o as Mesh;
         if (!mesh.isMesh) return;
         mesh.material = Array.isArray(mesh.material) ? mesh.material.map((m) => m.clone()) : mesh.material.clone();
+      });
+    }
+    if (name === 'kestrel' && !variant) {
+      // The player's own ship sits just under the crosshair: keep its trim from blooming white.
+      clone.traverse((o) => {
+        const mesh = o as Mesh;
+        if (mesh.isMesh && /Trim/.test(mesh.name)) (mesh.material as MeshStandardMaterial).emissiveIntensity *= 0.45;
       });
     }
     if (name === 'razor' || name === 'maul') {

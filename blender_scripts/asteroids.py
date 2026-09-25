@@ -31,13 +31,13 @@ LOW_FACES = 2400
 VARIANTS = [
     # name, seed, ellipsoid, lump strength, craters, ridge, facet, base colours (dark, light), vein colour
     dict(name="a", seed=11, shape=(1.0, 0.86, 0.78), lumps=0.2, craters=16, ridge=0.0, facet=0.0,
-         dark=(0.16, 0.145, 0.13), light=(0.42, 0.39, 0.35), vein=(0.62, 0.66, 0.7)),
+         dark=(0.115, 0.104, 0.094), light=(0.302, 0.281, 0.252), vein=(0.62, 0.66, 0.7)),
     dict(name="b", seed=23, shape=(1.38, 0.8, 0.72), lumps=0.16, craters=11, ridge=0.08, facet=0.0,
-         dark=(0.19, 0.12, 0.09), light=(0.48, 0.33, 0.24), vein=(0.75, 0.55, 0.35)),
+         dark=(0.137, 0.086, 0.065), light=(0.346, 0.238, 0.173), vein=(0.75, 0.55, 0.35)),
     dict(name="c", seed=37, shape=(1.05, 1.0, 0.82), lumps=0.12, craters=6, ridge=0.0, facet=0.22,
-         dark=(0.11, 0.115, 0.125), light=(0.3, 0.31, 0.33), vein=(0.45, 0.62, 0.75)),
+         dark=(0.079, 0.083, 0.09), light=(0.216, 0.223, 0.238), vein=(0.45, 0.62, 0.75)),
     dict(name="d", seed=53, shape=(1.12, 0.92, 0.66), lumps=0.26, craters=22, ridge=0.05, facet=0.06,
-         dark=(0.2, 0.18, 0.15), light=(0.55, 0.5, 0.42), vein=(0.7, 0.7, 0.62)),
+         dark=(0.144, 0.13, 0.108), light=(0.396, 0.36, 0.302), vein=(0.7, 0.7, 0.62)),
 ]
 
 
@@ -117,7 +117,7 @@ def rock_material(v, name):
     vw.link(nt, n2.outputs["Color"], grain.b)
     # Crater cavity darkening from the sculpt attribute.
     attr = vw.node(nt, "ShaderNodeAttribute", (-850, -150), attribute_name="cav")
-    cav_mul = vw.Mix(nt, "MULTIPLY", (-400, 150), b=(0.45, 0.43, 0.42))
+    cav_mul = vw.Mix(nt, "MULTIPLY", (-400, 150), b=(0.55, 0.53, 0.51))
     vw.link(nt, attr.outputs["Fac"], cav_mul.fac)
     vw.link(nt, grain.out, cav_mul.a)
     # Mineral veins: thin voronoi edges.
@@ -201,12 +201,20 @@ def build_variant(build, v):
     color = vw.new_image(f"rock_{v['name']}_color", TEX)
     normal = vw.new_image(f"rock_{v['name']}_normal", TEX, non_color=True)
     ao = vw.new_image(f"rock_{v['name']}_ao", TEX, non_color=True)
-    vw.bake(build, low, color, "DIFFUSE", sources=[high], materials=[bake_mat], pass_filter={"COLOR"}, cage=0.06, samples=8)
-    vw.bake(build, low, normal, "NORMAL", sources=[high], materials=[bake_mat], cage=0.06, samples=8)
-    vw.bake(build, low, ao, "AO", sources=[high], materials=[bake_mat], cage=0.06, samples=48)
+    vw.bake(build, low, color, "DIFFUSE", sources=[high], materials=[bake_mat], pass_filter={"COLOR"}, cage=0.1, samples=8)
+    vw.bake(build, low, normal, "NORMAL", sources=[high], materials=[bake_mat], cage=0.1, samples=8)
+    # The decimated mesh bridges over craters. Hide it from rays during the AO bake, or it caps
+    # every crater like a lid and bakes the floor black.
+    ray_flags = ("visible_camera", "visible_diffuse", "visible_glossy", "visible_shadow",
+                 "visible_transmission", "visible_volume_scatter")
+    for f in ray_flags:
+        setattr(low, f, False)
+    vw.bake(build, low, ao, "AO", sources=[high], materials=[bake_mat], cage=0.1, samples=48)
+    for f in ray_flags:
+        setattr(low, f, True)
     c = vw.image_pixels(color)
     a = vw.image_pixels(ao)
-    c[..., :3] *= (0.35 + 0.65 * a[..., :1])
+    c[..., :3] *= (0.4 + 0.6 * a[..., :1])
     vw.set_pixels(color, c)
 
     final = vw.baked_material(f"Rock_{v['name'].upper()}", color, normal, rough=0.9, metal=0.0)
@@ -224,9 +232,13 @@ def main():
             high.hide_render = True
             high.hide_set(True)
             vw.export_glb(b, [low], f"asteroid_{v['name']}.glb")
+            # Every variant is built at the origin: hide finished rocks from rays, or they sit
+            # inside the next rock during its AO bake and bake in as black blotches.
+            low.hide_render = True
             lows.append(low)
             vw.log(f"variant {v['name']}: {len(low.data.polygons)} faces")
         for i, low in enumerate(lows):
+            low.hide_render = False
             low.location = ((i - 1.5) * 2.6, 0, 0)
         vw.preview(b, lows, "asteroids.png", distance=10.5, elev=18, azim=0, size=1200)
         vw.preview(b, [lows[0]], "asteroid_a_close.png", distance=3.2, elev=25, azim=-30, size=800)

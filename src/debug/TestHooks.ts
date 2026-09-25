@@ -55,12 +55,13 @@ export function installTestHooks(game: Game): void {
         locked: ctrl?.locked ?? false,
         lockProgress: ctrl?.lockProgress ?? 0,
         enemies: w ? w.enemyShipsAlive() : 0,
-        capital: w ? { state: w.capital.state, generatorsLeft: w.capital.generatorsAlive } : null,
+        capital: w ? { state: w.capital.state, generatorsLeft: w.capital.generatorsAlive, finale: Math.round(w.capital.finaleProgress * 1000) / 1000 } : null,
         stats: game.mission ? { ...game.mission.stats } : null,
         fps: Math.round(game.fps),
         frameMs: Math.round(game.frameMs * 100) / 100,
         render: game.renderStats(),
         radPerPx: PLAYER.mouseRadPerPx * game.settings.sensitivity,
+        audio: { state: game.audio.ctx?.state ?? 'none', level: Math.round(game.audio.level() * 1000) / 1000, music: game.music.currentMode },
       };
     },
     /** Aim data for the nearest breakable rock in front of the player (bot showcase). */

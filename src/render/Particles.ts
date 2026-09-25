@@ -3,6 +3,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  DoubleSide,
   DynamicDrawUsage,
   InstancedBufferAttribute,
   InstancedMesh,
@@ -13,6 +14,7 @@ import {
   MeshStandardMaterial,
   NormalBlending,
   Object3D,
+  PlaneGeometry,
   PointLight,
   Points,
   Quaternion,
@@ -33,6 +35,7 @@ const spriteVert = /* glsl */ `
   attribute float aAlpha;
   attribute float aHot;
   uniform float uScale;
+  uniform float uMinPx;
   varying vec3 vColor;
   varying float vAlpha;
   varying float vHot;
@@ -42,7 +45,8 @@ const spriteVert = /* glsl */ `
     vHot = aHot;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
-    gl_PointSize = min(aSize * uScale / max(0.5, -mv.z), 900.0);
+    // Engine flares keep a minimum size so distant fighters stay visible as points.
+    gl_PointSize = max(min(aSize * uScale / max(0.5, -mv.z), 900.0), uMinPx);
   }
 `;
 
@@ -129,7 +133,7 @@ class SpriteLayer {
     this.geo.setAttribute('aHot', this.aHot);
     this.geo.setDrawRange(0, 0);
     this.material = new ShaderMaterial({
-      uniforms: { uScale: { value: 400 } },
+      uniforms: { uScale: { value: 400 }, uMinPx: { value: additive ? 2.2 : 0 } },
       vertexShader: spriteVert,
       fragmentShader: spriteFrag,
       vertexColors: true,
@@ -437,7 +441,7 @@ const shellFrag = /* glsl */ `
   varying vec3 vN;
   varying vec3 vV;
   void main() {
-    float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 3.0);
+    float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 4.0);
     gl_FragColor = vec4(uColor * f * uAlpha, f * uAlpha);
   }
 `;
@@ -461,12 +465,43 @@ interface Shell {
   active: boolean;
 }
 
+/* -------------------------------------------------------------------------------------------
+ * Flat shock rings for the carrier's final blast.
+ * ----------------------------------------------------------------------------------------- */
+const ringVert = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv * 2.0 - 1.0;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const ringFrag = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  uniform float uThick;
+  varying vec2 vUv;
+  void main() {
+    float d = length(vUv);
+    if (d > 1.0) discard;
+    // Bright leading edge, a soft wake behind it and a faint glow across the disc.
+    float edge = smoothstep(1.0 - uThick, 1.0 - uThick * 0.3, d) * (1.0 - smoothstep(0.985, 1.0, d));
+    float wake = 0.035 * smoothstep(0.4, 1.0 - uThick, d);
+    float k = (edge + wake) * uAlpha;
+    gl_FragColor = vec4(uColor * k, k);
+  }
+`;
+
+type Ring = Shell;
+const Z_AXIS = new Vector3(0, 0, 1);
+
 const _v = new Vector3();
 const _v2 = new Vector3();
 const C = (hex: number, k = 1) => new Color(hex).multiplyScalar(k);
 
-const FIRE_HOT = C(0xfff0c0, 4);
-const FIRE_MID = C(0xff8a30, 2.2);
+const FLASH = C(0xfff6e0, 2.4);
+const FLASH_END = C(0xffb060, 1.2);
+const FIRE_HOT = C(0xffe0a0, 1.7);
+const FIRE_MID = C(0xff7a28, 1.4);
 const FIRE_END = C(0x6a1a08, 0.4);
 const SMOKE0 = C(0x3a3634, 1);
 const SMOKE1 = C(0x151414, 1);
@@ -479,6 +514,7 @@ export class Particles {
   readonly sparks = new SparkLayer(1500);
   debris: DebrisLayer | null = null;
   private readonly shells: Shell[] = [];
+  private readonly rings: Ring[] = [];
   private readonly lights: { light: PointLight; age: number; life: number; power: number }[] = [];
 
   constructor(private readonly scene: Scene) {
@@ -499,6 +535,24 @@ export class Particles {
       mesh.renderOrder = 8;
       scene.add(mesh);
       this.shells.push({ mesh, mat, age: 0, life: 1, radius: 1, active: false });
+    }
+    const plane = new PlaneGeometry(2, 2);
+    for (let i = 0; i < 3; i++) {
+      const mat = new ShaderMaterial({
+        uniforms: { uColor: { value: new Color() }, uAlpha: { value: 0 }, uThick: { value: 0.12 } },
+        vertexShader: ringVert,
+        fragmentShader: ringFrag,
+        transparent: true,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        side: DoubleSide,
+        toneMapped: false,
+      });
+      const mesh = new Mesh(plane, mat);
+      mesh.visible = false;
+      mesh.renderOrder = 8;
+      scene.add(mesh);
+      this.rings.push({ mesh, mat, age: 0, life: 1, radius: 1, active: false });
     }
     for (let i = 0; i < 2; i++) {
       const light = new PointLight(0xff9a50, 0, 400, 2);
@@ -535,7 +589,20 @@ export class Particles {
         continue;
       }
       s.mesh.scale.setScalar(s.radius * (0.15 + 0.85 * (1 - (1 - t) * (1 - t))));
-      s.mat.uniforms.uAlpha.value = (1 - t) * 1.6;
+      s.mat.uniforms.uAlpha.value = (1 - t) * (1 - t) * 1.3;
+    }
+    for (const r of this.rings) {
+      if (!r.active) continue;
+      r.age += dt;
+      const t = r.age / r.life;
+      if (t >= 1) {
+        r.active = false;
+        r.mesh.visible = false;
+        continue;
+      }
+      r.mesh.scale.setScalar(r.radius * (0.04 + 0.96 * (1 - Math.pow(1 - t, 2.2))));
+      r.mat.uniforms.uAlpha.value = Math.pow(1 - t, 1.2) * 1.2;
+      r.mat.uniforms.uThick.value = 0.12 - 0.085 * t;
     }
     for (const l of this.lights) {
       if (l.power <= 0) continue;
@@ -555,6 +622,10 @@ export class Particles {
       s.active = false;
       s.mesh.visible = false;
     }
+    for (const r of this.rings) {
+      r.active = false;
+      r.mesh.visible = false;
+    }
     for (const l of this.lights) {
       l.power = 0;
       l.light.intensity = 0;
@@ -572,6 +643,19 @@ export class Particles {
     s.mat.uniforms.uColor.value.copy(color);
   }
 
+  private ring(pos: Vector3, normal: Vector3, radius: number, life: number, color: Color): void {
+    const r = this.rings.find((x) => !x.active) ?? this.rings[0];
+    r.active = true;
+    r.age = 0;
+    r.life = life;
+    r.radius = radius;
+    r.mesh.position.copy(pos);
+    r.mesh.quaternion.setFromUnitVectors(Z_AXIS, normal);
+    r.mesh.scale.setScalar(radius * 0.04);
+    r.mesh.visible = true;
+    r.mat.uniforms.uColor.value.copy(color);
+  }
+
   private flashLight(pos: Vector3, power: number, range: number, life: number, color = 0xff9a50): void {
     const l = this.lights.reduce((a, b) => (a.power <= b.power ? a : b));
     l.light.position.copy(pos);
@@ -584,10 +668,10 @@ export class Particles {
   }
 
   /** Fireball, sparks, smoke, debris and a light flash. size 1 = fighter. */
-  explosion(pos: Vector3, size: number, vel: Vector3): void {
+  explosion(pos: Vector3, size: number, vel: Vector3, shell = true): void {
     const s = size;
     const sq = Math.sqrt(s);
-    this.add.spawn({ pos, vel: _v.copy(vel).multiplyScalar(0.5), life: 0.16, size0: 16 * s, size1: 26 * s, color0: C(0xfff6e0, 5), color1: C(0xffb060, 2), alpha0: 1, alpha1: 0, hot: 1 });
+    this.add.spawn({ pos, vel: _v.copy(vel).multiplyScalar(0.5), life: 0.12, size0: 8 * s, size1: 16 * s, color0: FLASH, color1: FLASH_END, alpha0: 1, alpha1: 0, hot: 1 });
     const n = Math.round(14 * sq);
     for (let i = 0; i < n; i++) {
       fxRng.unitVector(_v2);
@@ -602,7 +686,7 @@ export class Particles {
         alpha0: 1,
         alpha1: 0,
         drag: 1.4,
-        hot: 0.8,
+        hot: 0.45,
       });
     }
     for (let i = 0; i < Math.round(22 * Math.min(sq, 2.5)); i++) {
@@ -630,35 +714,36 @@ export class Particles {
         this.debris.spawn(false, pos, _v2, fxRng.range(0.8, 2.2) * Math.min(s, 3), fxRng.range(2.5, 4.5));
       }
     }
-    if (s >= 1.8) this.shell(pos, 18 * s, 0.55 + s * 0.02, C(0xffc080, 2.4));
+    if (shell && s >= 1.8) this.shell(pos, 14 * s, 0.42, C(0xffc080, 1.8));
     this.flashLight(pos, 60 * s, 80 * s, 0.35 + 0.05 * s);
   }
 
   /** Energy splash where a bolt hits: sparks and a small flash (blue on shields). */
   hit(pos: Vector3, dir: Vector3, shield: boolean, color: Color): void {
     const flashCol = shield ? C(0x70c8ff, 3) : color;
-    this.add.spawn({ pos, vel: _v.set(0, 0, 0), life: 0.12, size0: 5, size1: 8, color0: flashCol, color1: flashCol, alpha0: 1, alpha1: 0, hot: 1 });
+    this.add.spawn({ pos, vel: _v.set(0, 0, 0), life: 0.1, size0: 3.6, size1: 6.5, color0: flashCol, color1: flashCol, alpha0: 1, alpha1: 0, hot: 0.8 });
     for (let i = 0; i < 6; i++) {
       fxRng.unitVector(_v2).addScaledVector(dir, -1.2).normalize().multiplyScalar(fxRng.range(30, 90));
       this.sparks.spawn(pos, _v2, fxRng.range(0.15, 0.35), shield ? C(0x80d0ff, 1.5) : SPARK);
     }
   }
 
-  /** Dust, rock chunks and a puff of sparks when an asteroid breaks. */
+  /** Sunlit dust, rock chunks and a puff of sparks when an asteroid breaks. */
   rockBurst(pos: Vector3, radius: number): void {
-    for (let i = 0; i < 10; i++) {
+    // Light tan dust so the cloud reads against black space.
+    for (let i = 0; i < 14; i++) {
       fxRng.unitVector(_v2);
       this.smoke.spawn({
         pos: _v.copy(pos).addScaledVector(_v2, fxRng.range(0, radius * 0.6)),
-        vel: _v2.multiplyScalar(fxRng.range(3, 12)).clone(),
-        life: fxRng.range(1.5, 2.8),
-        size0: radius * 0.8,
-        size1: radius * 2.2,
-        color0: C(0x6e6254, 1),
-        color1: C(0x2a2622, 1),
-        alpha0: 0.6,
+        vel: _v2.multiplyScalar(fxRng.range(5, 18)).clone(),
+        life: fxRng.range(1.8, 3.2),
+        size0: radius * 0.9,
+        size1: radius * 3,
+        color0: C(0xb4a288, 1),
+        color1: C(0x4a4036, 1),
+        alpha0: 0.7,
         alpha1: 0,
-        drag: 0.9,
+        drag: 0.7,
       });
     }
     this.add.spawn({ pos, vel: _v.set(0, 0, 0), life: 0.25, size0: radius * 1.5, size1: radius * 2.5, color0: C(0xffd6a0, 2), color1: C(0x805030, 0.5), alpha0: 0.8, alpha1: 0, hot: 0.5 });
@@ -667,9 +752,9 @@ export class Particles {
       this.sparks.spawn(pos, _v2, fxRng.range(0.3, 0.7), C(0xffb070, 1));
     }
     if (this.debris) {
-      for (let i = 0; i < 8; i++) {
-        fxRng.unitVector(_v2).multiplyScalar(fxRng.range(6, 22));
-        this.debris.spawn(true, _v.copy(pos).addScaledVector(_v2, 0.05), _v2, fxRng.range(0.4, 1.0) * radius * 0.35, fxRng.range(3, 6));
+      for (let i = 0; i < 18; i++) {
+        fxRng.unitVector(_v2).multiplyScalar(fxRng.range(12, 45));
+        this.debris.spawn(true, _v.copy(pos).addScaledVector(_v2, 0.05), _v2, fxRng.range(0.3, 0.9) * radius * 0.3, fxRng.range(3, 6));
       }
     }
   }
@@ -689,14 +774,51 @@ export class Particles {
     this.add.spawn({ pos, vel: _v.set(0, 0, 0), life, size0: size, size1: size, color0: color, color1: color, alpha0: 1, alpha1: life > 0 ? 0 : 1, hot: 0.6 });
   }
 
+  /** A small licking flame on a damaged hull (additive, short-lived). */
+  flame(pos: Vector3, vel: Vector3, size: number): void {
+    this.add.spawn({ pos, vel, life: fxRng.range(0.25, 0.45), size0: size, size1: size * 2.2, color0: C(0xffc060, 2.2), color1: C(0xff4a10, 0.5), alpha0: 0.95, alpha1: 0, drag: 1, hot: 0.5 });
+  }
+
+  /** Big lingering fire and smoke (carrier fracture lines). */
+  burn(pos: Vector3, size: number): void {
+    fxRng.unitVector(_v2).multiplyScalar(size * 0.25);
+    this.add.spawn({ pos, vel: _v2, life: fxRng.range(0.7, 1.1), size0: size, size1: size * 2.4, color0: C(0xffb050, 1.6), color1: C(0xc03008, 0.4), alpha0: 0.9, alpha1: 0, drag: 0.6, hot: 0.3 });
+    fxRng.unitVector(_v2).multiplyScalar(size * 0.15);
+    this.smoke.spawn({ pos, vel: _v2, life: fxRng.range(2, 3), size0: size * 1.4, size1: size * 4, color0: SMOKE0, color1: SMOKE1, alpha0: 0.5, alpha1: 0, drag: 0.3 });
+  }
+
   /** Missile exhaust smoke puff. */
   puff(pos: Vector3, vel: Vector3): void {
     this.smoke.spawn({ pos, vel, life: fxRng.range(0.6, 1.0), size0: 1.2, size1: 5, color0: C(0x8a8a8a, 1), color1: C(0x303030, 1), alpha0: 0.45, alpha1: 0, drag: 1.5 });
   }
 
-  /** A big shock shell for the carrier's final blast. */
+  /** A shock shell with a light flash (generator kills). */
   shockwave(pos: Vector3, radius: number, life: number): void {
-    this.shell(pos, radius, life, C(0xffd0a0, 2));
+    this.shell(pos, radius, life, C(0xffd0a0, 1.6));
     this.flashLight(pos, 800, radius * 2, life * 0.8, 0xffc080);
+  }
+
+  /**
+   * The carrier's final blast: a white core that swells into a fire cloud, two flat shock rings
+   * (normal = ring axis, tilt pushes the axis so the rings read as ellipses), streaks and hull debris.
+   */
+  nova(pos: Vector3, normal: Vector3, tilt: Vector3): void {
+    const still = new Vector3();
+    this.add.spawn({ pos, vel: still, life: 0.5, size0: 40, size1: 230, color0: C(0xfff6e8, 2.4), color1: C(0xffa050, 1.0), alpha0: 1, alpha1: 0, hot: 0.8 });
+    this.add.spawn({ pos, vel: still, life: 2.4, size0: 140, size1: 430, color0: C(0xff9440, 0.8), color1: C(0x5a1606, 0.2), alpha0: 0.45, alpha1: 0, hot: 0.2 });
+    this.ring(pos, _v2.copy(normal).addScaledVector(tilt, 0.9).normalize(), 1500, 2.6, C(0xffd2a0, 1.9));
+    this.ring(pos, _v2.copy(normal).addScaledVector(tilt, -0.35).normalize(), 850, 1.9, C(0x9cc4ff, 1.4));
+    for (let i = 0; i < 160; i++) {
+      fxRng.unitVector(_v2).multiplyScalar(fxRng.range(220, 720));
+      this.sparks.spawn(pos, _v2, fxRng.range(0.7, 1.7), C(0xffd090, 1.6));
+    }
+    if (this.debris) {
+      for (let i = 0; i < 46; i++) {
+        fxRng.unitVector(_v2);
+        _v.copy(pos).addScaledVector(_v2, fxRng.range(10, 80));
+        this.debris.spawn(false, _v, _v2.multiplyScalar(fxRng.range(40, 150)), fxRng.range(3, 10), fxRng.range(4, 7));
+      }
+    }
+    this.flashLight(pos, 500, 3200, 1.8, 0xffc080);
   }
 }

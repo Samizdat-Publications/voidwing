@@ -161,3 +161,21 @@ Newest last. Each entry: date, decision, reason.
   with radii and gun mounts matched in config. The current target's rim pulses brighter. Reason:
   readability at dogfight range beats strict scale.
 - 2026-09-24: The crosshair is a hollow sight (ticks and a faint ring) so the target shows through.
+- 2026-09-24: M3 effects are CPU-simulated pools drawn in a handful of calls: additive and smoke
+  point sprites, spark streaks, instanced debris from `debris.glb`, pooled shock shells and rings,
+  two pooled point lights, and all engine trails batched into one ribbon buffer that fades near
+  the camera. Post: HDR (half float, MSAA 4) -> UnrealBloom (threshold 1.6) -> ACES output.
+- 2026-09-24: The carrier's final blast is its own recipe (`Particles.nova`): white core, fire
+  cloud, two flat shock rings in the deck plane tipped toward the camera, streaks and hull debris,
+  in slow motion. The screen flash is capped at 1.7x exposure for about 0.6 s. Chain explosions
+  skip shock shells. Reason: round 1 of the M3 test captured a fully white frame and soap-bubble
+  shells around the carrier.
+- 2026-09-24: Audio is all Web Audio synthesis: an SFX engine (voice limiting, generated reverb
+  impulse, noise and FM voices) and a lookahead step sequencer for music (128 BPM, A minor;
+  title, combat, boss beds plus victory and defeat stingers).
+- 2026-09-24: Asteroid variants are built at the origin in one Blender session, so each finished
+  rock is hidden from rays (`hide_render`) before the next one bakes. Reason: overlapping rocks
+  were occluding each other's AO bake and baked in as black blotches.
+- 2026-09-24: Milestone playtests run against the production build (`--preview`), built once and
+  shared with `--nobuild` when scenarios run in parallel. Reason: editing source during dev-server
+  runs triggered HMR reloads that broke the bot.

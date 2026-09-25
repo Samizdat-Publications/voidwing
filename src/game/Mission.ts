@@ -61,6 +61,7 @@ export class Mission {
   private pending: { group: WaveGroup; at: number }[] = [];
   private waveShips: Ship[] = [];
   waveTotal = 0;
+  waveHasBombers = false;
   waveKills = 0;
   objective = '';
   objectiveDetail = '';
@@ -182,6 +183,7 @@ export class Mission {
         this.pending = def.groups.map((g) => ({ group: g, at: g.delay }));
         this.waveShips = [];
         this.waveTotal = def.groups.reduce((n, g) => n + g.count, 0);
+        this.waveHasBombers = def.groups.some((g) => g.kind === 'maul');
         this.waveKills = 0;
         this.objective = `Wave ${(p.wave ?? 0) + 1} of ${WAVES.length}: ${def.name}`;
         this.showBanner(`WAVE ${(p.wave ?? 0) + 1}`, def.name, 'warn', 3);
@@ -254,7 +256,7 @@ export class Mission {
           }
         }
         const alive = this.waveShips.filter((s) => s.alive).length;
-        this.objectiveDetail = `Destroy enemy fighters  ${this.waveKills}/${this.waveTotal}`;
+        this.objectiveDetail = `Destroy ${this.waveHasBombers ? 'fighters and bombers' : 'enemy fighters'}  ${this.waveKills}/${this.waveTotal}`;
         if (this.pending.length === 0 && alive === 0 && this.phaseTime > 1) this.enter(this.phaseIndex + 1);
         break;
       }

@@ -8,6 +8,19 @@ import {
   Vector3,
 } from 'three';
 
+/** What game code needs from the effects system (greybox flashes or the full FX). */
+export interface EffectsApi {
+  /** shell = false skips the shock shell (used for chains of explosions on the carrier). */
+  explosion(pos: Vector3, size: number, vel: Vector3, shell?: boolean): void;
+  warpFlash(pos: Vector3, size: number): void;
+  /** Lingering fire and smoke at a point (the carrier's fracture lines). size ~ flame metres. */
+  burn(pos: Vector3, size: number): void;
+  spark(pos: Vector3, color?: number, size?: number): void;
+  dust(pos: Vector3, radius: number): void;
+  clear(): void;
+  update(dt: number): void;
+}
+
 interface Flash {
   mesh: Mesh;
   mat: MeshBasicMaterial;
@@ -20,7 +33,7 @@ interface Flash {
 }
 
 /** Greybox effects: additive flashes for explosions, hits and warp-ins. */
-export class Effects {
+export class Effects implements EffectsApi {
   private readonly pool: Flash[] = [];
   private readonly geo = new IcosahedronGeometry(1, 1);
 
@@ -61,6 +74,10 @@ export class Effects {
 
   warpFlash(pos: Vector3, size: number): void {
     this.spawn(pos, size, 0.7, 0x9fd8ff);
+  }
+
+  burn(pos: Vector3, size: number): void {
+    this.spawn(pos, size, 0.8, 0xff7a30);
   }
 
   /** Rock dust cloud when an asteroid breaks up. */

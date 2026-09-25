@@ -5,9 +5,9 @@ import {
   DynamicDrawUsage,
   InstancedMesh,
   Matrix4,
-  MeshBasicMaterial,
   Quaternion,
   Scene,
+  ShaderMaterial,
   Vector3,
 } from 'three';
 import { segmentSphere } from '../core/math';
@@ -51,8 +51,21 @@ export class Projectiles {
     const geo = new BoxGeometry(1, 1, 1);
     for (const k of KINDS) {
       const vis = BOLTS[k];
-      const mat = new MeshBasicMaterial({
-        color: new Color(vis.color).multiplyScalar(vis.intensity),
+      // Bright head fading to a faint tail; bloom turns it into a glowing streak.
+      const mat = new ShaderMaterial({
+        uniforms: { uColor: { value: new Color(vis.color).multiplyScalar(vis.intensity) } },
+        vertexShader: `varying float vZ;
+          void main() {
+            vZ = position.z;
+            gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+          }`,
+        fragmentShader: `uniform vec3 uColor;
+          varying float vZ;
+          void main() {
+            float head = smoothstep(-0.5, 0.42, vZ);
+            float a = mix(0.12, 1.0, head * head) * (1.0 - smoothstep(0.44, 0.5, vZ));
+            gl_FragColor = vec4(uColor * a, a);
+          }`,
         toneMapped: false,
         transparent: true,
         blending: AdditiveBlending,

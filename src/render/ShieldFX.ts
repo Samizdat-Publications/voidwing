@@ -63,7 +63,9 @@ const fragment = /* glsl */ `
       ripple += smoothstep(0.1, 0.0, abs(d - front)) * fade;
       glow += smoothstep(0.35, 0.0, d) * exp(-age * 5.0);
     }
-    float idle = (0.05 + 0.5 * fres + 0.12 * hex * fres) * uIdle;
+    // A slow band of lit cells sweeps the surface so the bubble reads as a volume, not a rim.
+    float band = exp(-pow((vP.y - sin(uTime * 0.4) * 0.85) * 5.0, 2.0));
+    float idle = (0.04 + 0.5 * fres + hex * (0.06 + 0.2 * fres) + band * hex * 0.35) * uIdle;
     float a = (idle + ripple * (0.5 + hex * 0.9) + glow * 0.9) * uStrength;
     gl_FragColor = vec4(uColor * a, a);
   }

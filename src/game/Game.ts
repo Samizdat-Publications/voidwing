@@ -3,9 +3,13 @@ import { Engine } from '../core/Engine';
 import { Input } from '../core/Input';
 import { Rng, formatTime } from '../core/math';
 import { installTestHooks } from '../debug/TestHooks';
+import { AudioEngine } from '../audio/Audio';
+import { Music } from '../audio/Music';
+import { SoundDirector } from '../audio/SoundDirector';
 import { Assets } from '../render/Assets';
 import { CameraRig } from '../render/CameraRig';
-import { Effects } from '../render/Effects';
+import { FX } from '../render/FX';
+import { PostFX } from '../render/PostFX';
 import { setRimBoost } from '../render/materials';
 import { Sky } from '../render/Sky';
 import { Hud } from '../ui/Hud';
@@ -13,6 +17,7 @@ import { Screens, type EndStats } from '../ui/Screens';
 import { ARENA, type Difficulty } from './config';
 import { Mission, PHASES } from './Mission';
 import { PlayerController, type PlayerSettings } from './PlayerController';
+import type { Entity } from './Entity';
 import type { Ship } from './Ship';
 import { World } from './World';
 
@@ -23,6 +28,9 @@ export interface Settings extends PlayerSettings {
 }
 
 const _v = new Vector3();
+const _v2 = new Vector3();
+const _v3 = new Vector3();
+const _up = new Vector3(0, 1, 0);
 
 export class Game {
   readonly engine: Engine;
@@ -31,7 +39,11 @@ export class Game {
   readonly rig: CameraRig;
   readonly hud: Hud;
   readonly screens: Screens;
-  effects!: Effects;
+  effects!: FX;
+  post!: PostFX;
+  readonly audio = new AudioEngine();
+  readonly music: Music;
+  private sound!: SoundDirector;
   world!: World;
   mission!: Mission;
   controller!: PlayerController;
@@ -40,6 +52,8 @@ export class Game {
   stateTime = 0;
   readonly settings: Settings = { sensitivity: 1, invertY: false, autoLevel: true, difficulty: 'normal' };
   timeScale = 1;
+  private deathCause = '';
+  private lastRockHit = -99;
   fps = 60;
   frameMs = 16.7;
   private last = 0;
@@ -52,6 +66,9 @@ export class Game {
   constructor(container: HTMLElement) {
     this.engine = new Engine(container);
     this.input = new Input(this.engine.renderer.domElement);
+    this.music = new Music(this.audio);
+    this.engine.renderer.info.autoReset = false;
+    if (new URLSearchParams(location.search).has('nosound')) this.audio.enabled = false;
     this.rig = new CameraRig(this.engine.camera);
     this.hud = new Hud(container);
     this.screens = new Screens(container);
@@ -59,9 +76,24 @@ export class Game {
     this.godMode = this.params.has('god');
     const diff = this.params.get('diff');
     if (diff === 'easy' || diff === 'normal' || diff === 'hard') this.settings.difficulty = diff;
-    this.engine.onResize((w, h) => this.hud.resize(w, h));
+    this.engine.onResize((w, h) => {
+      this.hud.resize(w, h);
+      this.post?.setSize(w, h, this.engine.pixelRatio);
+    });
     this.hud.resize(this.engine.width, this.engine.height);
-    this.screens.onAction = (a) => this.onAction(a);
+    this.screens.onAction = (a) => {
+      this.audio.unlock();
+      this.audio.ui('click');
+      this.onAction(a);
+    };
+    this.screens.onHover = () => this.audio.ui('hover');
+    // Audio can only start after a user gesture.
+    const unlock = () => {
+      this.audio.unlock();
+      this.syncMusic();
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
     this.input.onPointerLockLost = () => {
       if (this.state === 'playing') this.pause();
     };
@@ -101,20 +133,27 @@ export class Game {
     scene.environment = this.sky.environment;
     scene.environmentIntensity = 1.15;
     scene.add(this.sky.group);
-    this.effects = new Effects(scene);
+    this.effects = new FX(scene, this.assets);
     this.world = new World(scene, this.assets, this.effects, this.seed);
+    this.effects.attach(this.world);
+    this.post = new PostFX(this.engine.renderer, scene, this.engine.camera);
+    this.post.setSize(this.engine.width, this.engine.height, this.engine.pixelRatio);
+    this.sound = new SoundDirector(this.audio, this.engine.camera);
+    this.sound.attach(this.world);
     this.world.difficulty = this.settings.difficulty;
     this.mission = new Mission(this.world);
     this.controller = new PlayerController(this.input, this.settings);
     this.mission.onVictory = () => this.onVictory();
     this.mission.onFinaleStart = () => this.onFinaleStart();
     this.world.capital.onFinalBlast = () => this.onFinalBlast();
-    this.world.events.on('destroyed', ({ entity }) => {
-      if (entity === this.world.player) this.onPlayerDeath();
+    this.world.events.on('destroyed', ({ entity, source }) => {
+      if (entity === this.world.player) {
+        this.deathCause = this.describeKiller(source);
+        this.onPlayerDeath();
+      }
     });
     this.world.events.on('playerHit', ({ killed }) => this.hud.onPlayerHit(killed));
     this.world.events.on('shieldBlocked', () => this.hud.onShieldBlocked());
-    this.world.events.on('asteroidDestroyed', ({ position, radius }) => this.effects.dust(position, radius));
     this.world.events.on('hullHit', ({ entity, point }) => {
       if (entity === this.world.player) {
         this.hud.onPlayerDamaged(point);
@@ -128,7 +167,28 @@ export class Game {
       }
     });
     this.world.events.on('destroyed', ({ entity }) => {
-      if (this.world.player && entity.position.distanceTo(this.world.player.position) < 400) this.rig.addTrauma(0.3);
+      const p = this.world.player;
+      if (!p) return;
+      const d = entity.position.distanceTo(p.position);
+      if (d < 600) this.rig.addTrauma(entity.kind === 'generator' ? 0.6 : 0.35 * (1 - d / 600));
+    });
+    this.world.events.on('missileExploded', ({ point }) => {
+      const p = this.world.player;
+      if (p && point.distanceTo(p.position) < 150) this.rig.addTrauma(0.3);
+    });
+    this.world.events.on('asteroidCollision', ({ ship }) => {
+      if (ship === this.world.player) {
+        this.rig.addTrauma(0.55);
+        this.lastRockHit = this.world.time;
+      }
+    });
+    this.world.events.on('capitalArrived', () => {
+      this.rig.addTrauma(0.5);
+      this.syncMusic();
+    });
+    this.world.events.on('capitalExplosion', ({ big }) => this.rig.addTrauma(big ? 1 : 0.25));
+    this.world.events.on('fired', ({ ship }) => {
+      if (ship === this.world.player) this.rig.addTrauma(0.012);
     });
   }
 
@@ -258,10 +318,27 @@ export class Game {
     }
   }
 
+  /** One line for the failure screen: what killed the player. */
+  private describeKiller(source: Entity | null): string {
+    switch (source?.kind) {
+      case 'razor':
+        return 'Shot down by a Razor dogfighter';
+      case 'maul':
+        return 'Shot down by a Maul bomber';
+      case 'turret':
+        return 'Hit by Leviathan flak';
+      case 'wingman':
+      case 'player':
+        return 'Lost to friendly fire';
+    }
+    return this.world.time - this.lastRockHit < 1 ? 'Collided with an asteroid' : 'Rammed the Leviathan';
+  }
+
   private onPlayerDeath(): void {
     if (this.state !== 'playing' && this.state !== 'finale') return;
     const p = this.world.player;
     this.controller.enabled = false;
+    this.hud.setMode('dead');
     this.setState('dying');
     this.rig.startDeath(p ? p.position.clone() : new Vector3());
     this.rig.addTrauma(0.8);
@@ -270,20 +347,37 @@ export class Game {
 
   private onFinaleStart(): void {
     this.setState('finale');
+    this.hud.setMode('cinematic');
     this.controller.enabled = false;
-    const cap = this.world.capital.position;
     const p = this.world.player;
-    // Frame the carrier from beside the player's ship.
-    const from = p ? p.position.clone() : cap.clone().add(_v.set(0, 300, 1200));
-    const away = from.clone().sub(cap).normalize();
-    this.rig.cinePos.copy(cap).addScaledVector(away, Math.max(900, from.distanceTo(cap) + 250)).add(_v.set(0, 160, 0));
-    this.rig.cineLook.copy(cap);
     this.rig.mode = 'cinematic';
-    if (p) p.invulnerable = true;
+    this.rig.cineLerp = 5;
+    if (p) {
+      p.invulnerable = true;
+      this.updateEscape(0);
+      this.rig.camera.position.copy(this.rig.cinePos);
+    }
+  }
+
+  /** Finale: the ship turns and burns away while the camera looks back past it at the carrier. */
+  private updateEscape(dt: number): void {
+    const p = this.world.player;
+    if (!p) return;
+    const cap = this.world.capital.position;
+    const away = _v.subVectors(p.position, cap).normalize();
+    this.controller.aimDir.lerp(away, Math.min(1, dt * 1.2)).normalize();
+    // Cruise first so the break-up stays close to the camera, then burn clear before the blast.
+    p.control.throttle = 0.85;
+    p.control.boost = this.stateTime > 5;
+    p.control.fire = false;
+    const side = _v2.crossVectors(away, _up).normalize();
+    this.rig.cinePos.copy(p.position).addScaledVector(away, 75).addScaledVector(side, 28).add(_v3.set(0, 18, 0));
+    this.rig.cineLook.lerpVectors(cap, p.position, 0.12);
   }
 
   private onFinalBlast(): void {
     this.rig.addTrauma(1);
+    this.post.flash(0.9);
     for (const s of this.world.ships) {
       if (s.alive && s.team === 'enemy') s.takeDamage(9999, s.position, null, this.world);
     }
@@ -309,12 +403,42 @@ export class Game {
       asteroids: st.asteroids,
       deaths: st.deaths,
       wave: this.mission.waveNumber,
+      cause: this.state === 'gameover' ? this.deathCause : '',
     };
   }
 
   private setState(s: GameState): void {
     this.state = s;
     this.stateTime = 0;
+    this.syncMusic();
+    if (s !== 'playing' && s !== 'finale') this.audio.stopLoops();
+  }
+
+  /** Pick the music bed for the current state and mission phase. */
+  private syncMusic(): void {
+    if (!this.audio.ctx) return;
+    const phase = this.mission?.phase.kind;
+    switch (this.state) {
+      case 'loading':
+      case 'title':
+        this.music.setMode('title');
+        break;
+      case 'playing':
+      case 'paused':
+      case 'dying':
+        this.music.setMode(phase === 'capital' || phase === 'finale' ? 'boss' : 'combat');
+        break;
+      case 'finale':
+        this.music.setMode('boss');
+        break;
+      case 'victory':
+        this.music.setMode('victory');
+        break;
+      case 'gameover':
+        this.music.setMode('defeat');
+        break;
+    }
+    this.music.setDucked(this.state === 'paused');
   }
 
   renderStats(): { calls: number; triangles: number } {
@@ -330,7 +454,9 @@ export class Game {
     this.fps = 1000 / Math.max(1, this.frameMs);
     const dt = Math.min(rawDt, 1 / 20);
     this.update(dt);
-    this.engine.render();
+    // Count draw calls across all post passes for the whole frame.
+    this.engine.renderer.info.reset();
+    this.post.render(dt);
     this.input.endFrame();
   }
 
@@ -366,8 +492,12 @@ export class Game {
       if (this.state === 'playing' || this.state === 'dying' || this.state === 'finale') this.mission.update(simDt);
       this.effects.update(simDt);
     }
+    if (this.state === 'finale' && w.player) this.updateEscape(dt);
     if (this.state !== 'paused') this.rig.update(dt, w.player && w.player.alive ? w.player : null);
-    this.sky.update(this.engine.camera, performance.now() / 1000, this.engine.pixelRatio);
+    const cam = this.engine.camera;
+    this.sky.update(cam, performance.now() / 1000, this.engine.pixelRatio);
+    this.effects.updateView(this.state === 'paused' ? 0 : dt, cam.position, this.engine.height * this.engine.pixelRatio, cam.fov);
+    this.sound.update(w, this.controller, this.state === 'playing' || this.state === 'finale');
 
     const p = w.player;
     // The current target's rim pulses brighter so it stands out from the crowd.
@@ -378,7 +508,10 @@ export class Game {
     }
     if (tgt) setRimBoost(tgt.model, 1.9 + 0.5 * Math.sin(performance.now() / 160));
     if (p && (this.state === 'playing' || this.state === 'finale' || this.state === 'dying')) {
-      if (this.controller.missileDenied) this.hud.onNoLock();
+      if (this.controller.missileDenied) {
+        this.hud.onNoLock();
+        this.audio.ui('deny');
+      }
       this.hud.update(dt, { world: w, player: p, controller: this.controller, mission: this.mission, camera: this.engine.camera });
     }
   }

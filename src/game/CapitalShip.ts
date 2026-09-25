@@ -55,7 +55,7 @@ export class Generator extends Entity {
   }
 
   protected onDestroyed(world: World): void {
-    world.effects.explosion(this.position, 3.2, this.capital.velocityZero);
+    world.effects.explosion(this.position, 3.2, this.capital.velocityZero, false);
     this.object.visible = false;
     if (this.beam) this.beam.visible = false;
     this.capital.onGeneratorDestroyed(this, world);
@@ -174,6 +174,10 @@ export class CapitalShip {
   /** Set by the mission when the final blast happens. */
   onFinalBlast: (() => void) | null = null;
   private blasted = false;
+  private brokenUp = false;
+  private readonly sections: { obj: Object3D; center: Vector3; vel: Vector3; axis: Vector3; spin: number; ends: Vector3[] }[] = [];
+  private burnTimer = 0;
+  private readonly sectionHomes: { obj: Object3D; pos: Vector3; quat: Quaternion }[] = [];
   readonly shield: ShieldBubble;
   private shieldLevel = 1;
   private readonly beamMat = new MeshBasicMaterial({
@@ -256,6 +260,15 @@ export class CapitalShip {
       if (g.beam) g.beam.visible = true;
     }
     this.hull.visible = true;
+    // Put broken sections back and relight the hull.
+    for (const h of this.sectionHomes) {
+      h.obj.position.copy(h.pos);
+      h.obj.quaternion.copy(h.quat);
+    }
+    this.sectionHomes.length = 0;
+    this.sections.length = 0;
+    this.brokenUp = false;
+    for (const l of this.lightMeshes()) l.visible = true;
     for (const t of this.turrets) t.base.visible = true;
     this.shield.mesh.visible = true;
     this.shieldLevel = 1;
@@ -265,7 +278,7 @@ export class CapitalShip {
   }
 
   warpIn(world: World): void {
-    // Arrive ~1.3 km ahead of the player, broadside on, so the fight comes to them.
+    // Arrive ~1 km ahead of the player, broadside on, so the fight comes to them.
     const p = world.player;
     if (p) {
       const fwd = p.forward(new Vector3());
@@ -275,12 +288,12 @@ export class CapitalShip {
       const distOut = p.position.length();
       const toCenter = p.position.clone().multiplyScalar(-1 / Math.max(1, distOut));
       fwd.addScaledVector(toCenter, clamp((distOut - 900) / 1200, 0, 1.6)).normalize();
-      const pos = p.position.clone().addScaledVector(fwd, 1300);
+      const pos = p.position.clone().addScaledVector(fwd, 1000);
       pos.y = clamp(pos.y, -120, 220);
       if (pos.length() > 2300) pos.setLength(2300);
-      // Never much farther than ~1.5 km from the player.
+      // Never much farther than ~1.2 km from the player.
       const d = pos.distanceTo(p.position);
-      if (d > 1550) pos.lerp(p.position, 1 - 1450 / d);
+      if (d > 1250) pos.lerp(p.position, 1 - 1150 / d);
       this.homePos.copy(pos);
       const toPlayer = p.position.clone().sub(pos);
       toPlayer.y = 0;
@@ -375,23 +388,60 @@ export class CapitalShip {
   }
 
   private updateFinale(dt: number, world: World): void {
-    const duration = 8.5;
+    const duration = 9.6;
+    const blastAt = 7.4;
     this.finaleProgress = clamp(this.stateTime / duration, 0, 1);
+    // The lights stutter as power fails, then the hull breaks into its three sections.
+    if (!this.brokenUp) {
+      const flicker = this.stateTime > 1.1 && Math.sin(this.stateTime * 47) * Math.sin(this.stateTime * 13) > 0.2;
+      for (const l of this.lightMeshes()) l.visible = !flicker;
+      if (this.stateTime > 2.4) this.breakUp(world);
+    }
+    for (const s of this.sections) {
+      s.obj.position.addScaledVector(s.vel, dt);
+      _q.setFromAxisAngle(s.axis, s.spin * dt);
+      s.obj.quaternion.premultiply(_q);
+    }
+    // The torn ends of each section burn and smoke until the blast.
+    if (this.brokenUp && !this.blasted) {
+      this.burnTimer -= dt;
+      while (this.burnTimer <= 0) {
+        this.burnTimer += 0.035;
+        const sec = this.sections[Math.floor(fxRng.next() * this.sections.length)];
+        if (!sec || !sec.ends.length) break;
+        const end = sec.ends[Math.floor(fxRng.next() * sec.ends.length)];
+        _v.set(fxRng.range(-40, 40), fxRng.range(-22, 26), fxRng.range(-6, 6)).add(end);
+        _v.applyQuaternion(sec.obj.quaternion).add(sec.obj.position);
+        this.object.localToWorld(_v);
+        world.effects.burn(_v, fxRng.range(12, 22));
+      }
+    }
     this.explosionTimer -= dt;
-    if (this.explosionTimer <= 0 && this.stateTime < 6.6) {
+    if (this.explosionTimer <= 0 && this.stateTime < blastAt) {
       // Chain reaction: explosions speed up as the reactor goes.
-      this.explosionTimer = Math.max(0.08, 0.5 - this.stateTime * 0.07);
-      const pts = this.layout.hullPoints;
-      const p = pts[Math.floor(fxRng.next() * pts.length)];
-      _v.copy(p).add(_v2.set(fxRng.range(-15, 15), fxRng.range(-10, 10), fxRng.range(-25, 25)));
+      this.explosionTimer = Math.max(0.07, 0.45 - this.stateTime * 0.055);
+      const sec = this.sections.length ? this.sections[Math.floor(fxRng.next() * this.sections.length)] : null;
+      if (sec) {
+        // A point on a drifting section.
+        _v.set(fxRng.range(-45, 45), fxRng.range(-25, 30), fxRng.range(-90, 90)).add(sec.center);
+        _v.applyQuaternion(sec.obj.quaternion).add(sec.obj.position);
+      } else {
+        const pts = this.layout.hullPoints;
+        _v.copy(pts[Math.floor(fxRng.next() * pts.length)]).add(_v2.set(fxRng.range(-15, 15), fxRng.range(-10, 10), fxRng.range(-25, 25)));
+      }
       this.object.localToWorld(_v);
-      world.effects.explosion(_v, fxRng.range(2.5, 5.5), this.velocityZero);
+      world.effects.explosion(_v, fxRng.range(2.5, 5.5), this.velocityZero, false);
       world.events.emit('capitalExplosion', { position: _v.clone(), big: false });
     }
-    if (this.stateTime > 6.6 && !this.blasted) {
+    if (this.stateTime > blastAt && !this.blasted) {
       this.blasted = true;
-      world.effects.explosion(this.object.position, 30, this.velocityZero);
-      world.effects.warpFlash(this.object.position, 400);
+      // The core flash, shock rings and hull debris come from the FX 'capitalExplosion' handler.
+      world.effects.explosion(this.object.position, 16, this.velocityZero, false);
+      for (const s of this.sections) {
+        _v.copy(s.center).applyQuaternion(s.obj.quaternion).add(s.obj.position);
+        this.object.localToWorld(_v);
+        world.effects.explosion(_v, 9, this.velocityZero, false);
+      }
       world.events.emit('capitalExplosion', { position: this.object.position.clone(), big: true });
       this.onFinalBlast?.();
       this.hull.visible = false;
@@ -401,6 +451,61 @@ export class CapitalShip {
     if (this.stateTime > duration) {
       this.state = 'dead';
       this.object.visible = false;
+    }
+  }
+
+  private lightCache: Object3D[] | null = null;
+  private lightMeshes(): Object3D[] {
+    if (!this.lightCache) {
+      this.lightCache = [];
+      this.hull.traverse((o) => {
+        if (/Leviathan_(Windows|Running|Hangar|Engines)/.test(o.name)) this.lightCache!.push(o);
+      });
+      for (const g of this.generators) if (g.beam) this.lightCache.push(g.beam);
+    }
+    return this.lightCache;
+  }
+
+  /** Separate the bow, mid and stern sections and send them drifting apart. */
+  private breakUp(world: World): void {
+    this.brokenUp = true;
+    for (const l of this.lightMeshes()) l.visible = false;
+    // name, drift (vy, vz), which ends face a neighbour (-1 = min z, +1 = max z).
+    const defs: [string, number, number, number[]][] = [
+      ['Leviathan_Bow', 5, -26, [1]],
+      ['Leviathan_Mid', -2, 1, [-1, 1]],
+      ['Leviathan_Stern', -5, 22, [-1]],
+    ];
+    for (const [name, vy, vz, endSides] of defs) {
+      const obj = this.hull.getObjectByName(name);
+      if (!obj) continue;
+      this.sectionHomes.push({ obj, pos: obj.position.clone(), quat: obj.quaternion.clone() });
+      const mesh = obj as Mesh;
+      const center = new Vector3();
+      const ends: Vector3[] = [];
+      if (mesh.isMesh) {
+        mesh.geometry.computeBoundingBox();
+        const box = mesh.geometry.boundingBox!;
+        box.getCenter(center);
+        for (const side of endSides) ends.push(new Vector3(center.x, center.y, side < 0 ? box.min.z : box.max.z));
+      }
+      this.sections.push({
+        obj,
+        center,
+        vel: new Vector3(fxRng.range(-4, 4), vy, vz),
+        axis: fxRng.unitVector(new Vector3()),
+        spin: fxRng.range(0.05, 0.12),
+        ends,
+      });
+    }
+    // Fireballs along the two fracture lines.
+    for (const z of [-120, 130]) {
+      for (let i = 0; i < 4; i++) {
+        _v.set(fxRng.range(-45, 45), fxRng.range(-25, 25), z + fxRng.range(-12, 12));
+        this.object.localToWorld(_v);
+        world.effects.explosion(_v, fxRng.range(4.5, 7), this.velocityZero, false);
+      }
+      world.events.emit('capitalExplosion', { position: _v.clone(), big: false });
     }
   }
 

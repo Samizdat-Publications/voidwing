@@ -29,6 +29,7 @@ const height = Number(opt('height', 720));
 const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const outDir = path.resolve(root, opt('out', `test-output/${scenario}-${stamp}`));
 const maxMinutes = Number(opt('max-minutes', scenario === 'win' ? 16 : 6));
+fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 
 const log = (...a) => console.log(`[playtest ${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a);
@@ -39,7 +40,8 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 let server;
 let baseUrl;
 if (flag('preview')) {
-  await build({ root, logLevel: 'warn' });
+  // --nobuild reuses dist/ so several scenarios can run in parallel against one build.
+  if (!flag('nobuild')) await build({ root, logLevel: 'warn' });
   server = await preview({ root, preview: { port: 4199, strictPort: false }, logLevel: 'warn' });
   baseUrl = server.resolvedUrls.local[0];
 } else {
@@ -80,6 +82,13 @@ async function shot(label) {
 const state = () => page.evaluate(() => window.__VW.state());
 
 const perf = [];
+const audioSeen = { maxLevel: 0, modes: new Set(), states: new Set() };
+function trackAudio(st) {
+  if (!st || !st.audio) return;
+  audioSeen.maxLevel = Math.max(audioSeen.maxLevel, st.audio.level);
+  audioSeen.modes.add(st.audio.music);
+  audioSeen.states.add(st.audio.state);
+}
 const timeline = [];
 let lastPhaseKey = '';
 
@@ -152,14 +161,15 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
     bot.mx += dx;
     bot.my += dy;
     await page.mouse.move(bot.mx, bot.my);
-    const want = a.noseErr < 0.05;
+    const want = a.noseErr < 0.05 && a.dist < 320;
     if (want !== fired) {
       if (want) await page.mouse.down();
       else await page.mouse.up();
       fired = want;
     }
     if (st.stats.asteroids > before) {
-      await sleep(450);
+      // Give the fragments a moment to fly apart before the shot.
+      await sleep(1100);
       await shot('asteroid_split');
       break;
     }
@@ -192,10 +202,14 @@ async function runMission({ passive = false } = {}) {
   let lastPhase = '';
   let lastPerf = 0;
   let firstGeneratorLeft = -1;
+  let generatorDownAt = 0;
   let criticalShot = false;
+  let lastShield = -1;
+  let dyingAt = 0;
   while (Date.now() < deadline) {
     const st = await state();
     track(st);
+    trackAudio(st);
     if (st.phase !== lastPhase) {
       lastPhase = st.phase;
       phaseEnteredAt = Date.now();
@@ -211,13 +225,23 @@ async function runMission({ passive = false } = {}) {
       await shotOnce('dogfight_close', st.phase === 'wave' && st.aim && st.aim.dist < 220 && st.aim.noseErr < 0.3);
       await shotOnce('missile_lock', st.locked);
       await shotOnce('wave2_bombers', st.wave === 2 && st.phase === 'wave' && ((st.target && st.target.kind === 'maul' && st.aim && st.aim.dist < 600) || inPhase > 30));
-      await shotOnce('maul_close', st.target && st.target.kind === 'maul' && st.aim && st.aim.dist < 350 && st.aim.noseErr < 0.35);
+      // A live, mostly intact bomber close up: hold fire for a moment so impact flashes clear.
+      if (!once.has('maul_close') && st.target && st.target.kind === 'maul' && st.target.alive && st.target.hull > 60 && st.aim && st.aim.dist < 250 && st.aim.noseErr < 0.3) {
+        await releaseAll();
+        await sleep(350);
+        await shotOnce('maul_close', true);
+      }
       await shotOnce('wave3_swarm', st.wave === 3 && st.phase === 'wave' && inPhase > 10);
       await shotOnce('wave_cleared', st.phase === 'break' && inPhase > 1);
       await shotOnce('capital_arrival', st.phase === 'capital' && inPhase > 3.5);
       if (st.capital && firstGeneratorLeft < 0 && st.phase === 'capital') firstGeneratorLeft = st.capital.generatorsLeft;
       await shotOnce('generator_attack', st.phase === 'capital' && st.target && st.target.kind === 'generator' && st.aim && st.aim.dist < 650);
-      await shotOnce('generator_down', st.phase === 'capital' && st.capital && st.capital.generatorsLeft < firstGeneratorLeft);
+      // Wait for the banner to finish fading in.
+      if (!generatorDownAt && st.phase === 'capital' && st.capital && st.capital.generatorsLeft < firstGeneratorLeft) generatorDownAt = Date.now();
+      await shotOnce('generator_down', generatorDownAt > 0 && Date.now() - generatorDownAt > 700);
+      // The player's shield taking a hit (shimmer on the ship).
+      if (st.player && lastShield >= 0) await shotOnce('shield_hit', st.player.shield < lastShield - 1 && st.player.shield > 10);
+      if (st.player) lastShield = st.player.shield;
       if (!criticalShot && st.player && st.player.hull < 30 && st.player.alive) {
         criticalShot = true;
         await shot('hull_critical');
@@ -225,14 +249,19 @@ async function runMission({ passive = false } = {}) {
     }
     if (!bot.showcased && !bot.passive && st.gameState === 'playing' && st.phase === 'break' && st.wave === 1 && inPhase > 0.3) {
       bot.showcased = true;
-      await showcase();
+      await showcase(900, 15000);
       continue;
     }
     if (st.gameState === 'finale') {
-      await shotOnce('finale_chain', inPhase > 2.5);
-      await shotOnce('finale_blast', inPhase > 7.2);
+      // Blast at 7.4 s of the 9.6 s finale (progress 0.77).
+      await shotOnce('finale_chain', (st.capital?.finale ?? 0) > 0.45);
+      await shotOnce('finale_blast', (st.capital?.finale ?? 0) > 0.8);
     }
-    if (st.gameState === 'dying') await shotOnce('death_cam', true);
+    // Let the death camera pull back and the HUD fade first.
+    if (st.gameState === 'dying') {
+      if (!dyingAt) dyingAt = Date.now();
+      await shotOnce('death_cam', Date.now() - dyingAt > 700);
+    } else dyingAt = 0;
     if (st.gameState === 'victory') {
       await releaseAll();
       await sleep(1200);
@@ -316,11 +345,12 @@ const report = {
     maxTris: perf.length ? Math.max(...perf.map((p) => p.tris)) : null,
   },
   console: { errors, warnings, count: consoleLog.length },
+  audio: { maxLevel: audioSeen.maxLevel, modes: [...audioSeen.modes], states: [...audioSeen.states] },
   finalState,
 };
 fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2));
 fs.writeFileSync(path.join(outDir, 'console.log'), consoleLog.map((m) => `[${m.t.toFixed(1)}] ${m.type}: ${m.text}`).join('\n'));
-log(`outcome=${outcome} errors=${errors.length} warnings=${warnings.length} shots=${shots.length} avgFps=${report.perf.avgFps} minFps=${report.perf.minFps}`);
+log(`outcome=${outcome} errors=${errors.length} warnings=${warnings.length} shots=${shots.length} avgFps=${report.perf.avgFps} minFps=${report.perf.minFps} audioMax=${audioSeen.maxLevel} music=${[...audioSeen.modes].join(',')}`);
 log('out:', outDir);
 await browser.close();
 await server.close?.();

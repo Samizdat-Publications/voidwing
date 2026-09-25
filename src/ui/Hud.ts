@@ -33,6 +33,22 @@ interface Proj {
   depth: number;
 }
 
+interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** combat: full HUD. cinematic: finale camera, only objective and comms. dead: death camera. */
+export type HudMode = 'combat' | 'cinematic' | 'dead';
+
+const CLASS_LABEL: Record<string, string> = {
+  razor: 'DOGFIGHTER',
+  maul: 'HEAVY BOMBER',
+  generator: 'SHIELD GENERATOR',
+};
+
 const _v = new Vector3();
 const _v2 = new Vector3();
 const _q = new Quaternion();
@@ -73,6 +89,7 @@ export class Hud {
   private readonly throttleFill: HTMLElement;
   private readonly targetPanel: HTMLElement;
   private readonly targetName: HTMLElement;
+  private readonly targetClass: HTMLElement;
   private readonly targetDist: HTMLElement;
   private readonly targetHull: HTMLElement;
   private readonly targetShield: HTMLElement;
@@ -87,6 +104,9 @@ export class Hud {
   private readonly cache = new Map<string, string | number>();
   private noLockFlash = 0;
   private lastShieldBlock = -99;
+  private mode: HudMode = 'combat';
+  /** Screen rects already taken by labels this frame, so later labels can dodge them. */
+  private readonly labelRects: Rect[] = [];
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'hud hidden', parent);
@@ -137,6 +157,7 @@ export class Hud {
     this.targetPanel = el('div', 'hud-panel hud-target hidden', this.root);
     el('div', 'tp-label', this.targetPanel, 'TARGET');
     this.targetName = el('div', 'tp-name', this.targetPanel);
+    this.targetClass = el('div', 'tp-class', this.targetPanel);
     this.targetDist = el('div', 'tp-dist', this.targetPanel);
     const th = el('div', 'tp-bar tp-shield', this.targetPanel);
     this.targetShield = el('div', 'tp-fill', th);
@@ -146,6 +167,13 @@ export class Hud {
 
   show(): void {
     this.root.classList.remove('hidden');
+    this.setMode('combat');
+  }
+
+  setMode(mode: HudMode): void {
+    this.mode = mode;
+    this.root.classList.toggle('cinematic', mode === 'cinematic');
+    this.root.classList.toggle('dead', mode === 'dead');
   }
   hide(): void {
     this.root.classList.add('hidden');
@@ -254,6 +282,7 @@ export class Hud {
     this.set('tpVis', t && player.alive ? 1 : 0, (v) => this.targetPanel.classList.toggle('hidden', v === 0));
     if (t) {
       this.set('tpName', t.name, (v) => (this.targetName.textContent = String(v)));
+      this.set('tpClass', CLASS_LABEL[t.kind] ?? '', (v) => (this.targetClass.textContent = String(v)));
       this.set('tpTeam', t.objective ? 'obj' : 'foe', (v) => this.targetPanel.setAttribute('data-kind', String(v)));
       const d = Math.round(t.position.distanceTo(player.position));
       this.set('tpDist', d, (v) => (this.targetDist.textContent = `${v} m`));
@@ -283,15 +312,17 @@ export class Hud {
       }
     }
 
-    const warns: string[] = [];
-    if (world.missiles.incomingOn(player) > 0) warns.push('MISSILE INCOMING');
-    if (player.hullFraction < 0.3 && player.alive) warns.push('HULL CRITICAL');
-    if (controller.outOfBounds) warns.push('RETURN TO COMBAT AREA');
-    if (this.time - this.lastShieldBlock < 1.6) warns.push('SHOTS BLOCKED BY SHIELD - FLANK THE GENERATOR');
-    const wKey = warns.join('|');
+    const warns: [string, string][] = [];
+    if (player.alive) {
+      if (world.missiles.incomingOn(player) > 0) warns.push(['missile', 'MISSILE INCOMING - BREAK HARD']);
+      if (player.hullFraction < 0.3) warns.push(['hull', 'HULL CRITICAL']);
+      if (controller.outOfBounds) warns.push(['bounds', 'RETURN TO COMBAT AREA']);
+      if (this.time - this.lastShieldBlock < 1.6) warns.push(['info', 'SHOTS BLOCKED BY SHIELD - FLANK THE GENERATOR']);
+    }
+    const wKey = warns.map((w) => w[1]).join('|');
     if (wKey !== this.lastWarn) {
       this.lastWarn = wKey;
-      this.warnings.innerHTML = warns.map((w) => `<div class="warn">${esc(w)}</div>`).join('');
+      this.warnings.innerHTML = warns.map(([k, w]) => `<div class="warn warn-${k}">${esc(w)}</div>`).join('');
     }
   }
 
@@ -300,7 +331,9 @@ export class Hud {
     const { camera, player, controller, world } = ctx;
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     g.clearRect(0, 0, this.w, this.h);
-    if (!player.alive) return;
+    if (!player.alive || this.mode !== 'combat') return;
+    this.labelRects.length = 0;
+    this.drawLowHull(player);
     g.lineCap = 'round';
     g.lineJoin = 'round';
     const pr: Proj = { x: 0, y: 0, behind: false, onScreen: false, depth: 0 };
@@ -308,8 +341,10 @@ export class Hud {
     // Contacts: full brackets up close, small pips far away, arrows off screen.
     const target = player.target;
     const contacts: Entity[] = [];
-    for (const s of world.ships) if (s.alive && s !== player) contacts.push(s);
-    for (const gen of world.capital.generators) if (gen.alive && world.capital.state !== 'hidden') contacts.push(gen);
+    // The current target goes first so its label claims its spot before any other label.
+    if (target && target.alive) contacts.push(target);
+    for (const s of world.ships) if (s.alive && s !== player && s !== target) contacts.push(s);
+    for (const gen of world.capital.generators) if (gen.alive && gen !== target && world.capital.state !== 'hidden') contacts.push(gen);
     const focal = (this.h / 2) / Math.tan((camera.fov * Math.PI) / 360);
     g.font = '600 11px "Chakra Petch", "Rajdhani", system-ui, sans-serif';
     g.textAlign = 'center';
@@ -339,33 +374,28 @@ export class Hud {
           this.drawBracket(pr.x, pr.y, size, color, isTarget, friend, e.objective);
         }
         if (isTarget) {
-          // Label and bars sit beside the bracket, clear of the crosshair above it.
-          g.fillStyle = color;
-          g.textAlign = 'left';
-          g.fillText(e.name.toUpperCase(), pr.x + Math.max(size, 26) + 10, pr.y - 4);
-          g.globalAlpha = 0.8;
-          g.fillText(`${Math.round(d)} m`, pr.x + Math.max(size, 26) + 10, pr.y + 9);
-          g.globalAlpha = 1;
-          g.textAlign = 'center';
-          this.drawMiniBars(pr.x + Math.max(size, 26) + 10 + 17, pr.y + 15, e, color);
+          // Name, range and bars sit to the right, outside the lock ring, so nothing crosses them.
+          const lx = pr.x + this.lockRadius(size) + 12;
+          const ly = this.placeLabel(lx, pr.y - 15, 70, 36);
+          this.labelText(e.name.toUpperCase(), lx, ly + 11, color, 'left', 1);
+          this.labelText(`${Math.round(d)} m`, lx, ly + 24, color, 'left', 0.8);
+          this.drawMiniBars(lx + 17, ly + 30, e, color);
         } else if (e.objective) {
-          g.fillStyle = color;
-          g.globalAlpha = 0.9;
-          g.fillText(e.name.replace('Generator', 'GEN').toUpperCase(), pr.x, pr.y - size - 7);
-          g.globalAlpha = 1;
+          const name = e.name.replace('Generator', 'GEN').toUpperCase();
+          const ly = this.placeLabel(pr.x - 24, Math.max(4, pr.y - size - 19), 48, 14);
+          this.labelText(name, pr.x, ly + 11, color, 'center', 0.9);
           this.drawMiniBars(pr.x, pr.y + size + 6, e, color);
         } else if (friend && d < 400) {
-          g.fillStyle = color;
-          g.globalAlpha = 0.7;
-          g.fillText(e.name.toUpperCase(), pr.x, pr.y - size - 6);
-          g.globalAlpha = 1;
+          const ly = this.placeLabel(pr.x - 32, Math.max(4, pr.y - size - 18), 64, 14);
+          this.labelText(e.name.toUpperCase(), pr.x, ly + 11, color, 'center', 0.75);
         }
       } else if (!friend && (isTarget || e.objective || d < 2600)) {
         this.drawEdgeArrow(pr, color, isTarget, isTarget ? `${Math.round(d)} m` : '');
       }
     }
 
-    // Incoming enemy missiles.
+    // Incoming enemy missiles: a pulsing ring on screen, and a threat chevron around the sight
+    // pointing at every missile that is tracking the player.
     for (const m of world.missiles.list) {
       if (!m.alive || m.team === 'player') continue;
       this.project(m.position, camera, pr);
@@ -375,7 +405,8 @@ export class Hud {
         g.beginPath();
         g.arc(pr.x, pr.y, 7 + Math.sin(this.time * 20) * 2, 0, Math.PI * 2);
         g.stroke();
-      } else if (m.target === player) this.drawEdgeArrow(pr, COLORS.missile, true, 'MISSILE');
+      }
+      if (m.target === player) this.drawThreat(m.position, player, 136, '#ff3b4a', 'MISSILE');
     }
 
     // Lead pip (where to shoot, yellow) and missile lock ring (drawn outside the bracket).
@@ -383,41 +414,25 @@ export class Hud {
       this.project(target.position, camera, pr);
       const tx = pr.x, ty = pr.y, tOn = pr.onScreen;
       const tSize = clamp((target.radius / Math.max(1, pr.depth)) * focal * 1.4, 16, 90);
-      if (controller.hasLead && tOn) {
-        this.project(controller.lead, camera, pr);
-        const off = Math.hypot(pr.x - tx, pr.y - ty);
-        if (pr.onScreen && off > 10) {
-          g.strokeStyle = COLORS.lead;
-          g.globalAlpha = 0.35;
-          g.lineWidth = 1;
-          g.beginPath();
-          g.moveTo(tx, ty);
-          g.lineTo(pr.x, pr.y);
-          g.stroke();
-          g.globalAlpha = 1;
-          g.lineWidth = 2;
-          g.beginPath();
-          g.arc(pr.x, pr.y, 8, 0, Math.PI * 2);
-          g.stroke();
-          g.fillStyle = COLORS.lead;
-          g.beginPath();
-          g.arc(pr.x, pr.y, 3.2, 0, Math.PI * 2);
-          g.fill();
-        }
-      }
       if (tOn && (controller.inLockCone || controller.lockProgress > 0)) {
+        // Lock: four arcs spin and close in on the target, then a solid ring with ticks.
         const p = controller.lockProgress;
-        const rMin = Math.max(tSize * 1.25, 26);
-        const r = rMin + (1 - p) * 26;
+        const rLock = this.lockRadius(tSize);
+        const r = rLock + (1 - p) * 26;
         g.strokeStyle = controller.locked ? COLORS.foe : 'rgba(255,90,100,0.75)';
         g.lineWidth = controller.locked ? 2.5 : 1.5;
         g.save();
         g.translate(tx, ty);
-        g.rotate(controller.locked ? Math.PI / 4 : this.time * 3);
         g.beginPath();
         if (controller.locked) {
-          g.rect(-r, -r, r * 2, r * 2);
+          g.arc(0, 0, r, 0, Math.PI * 2);
+          for (let i = 0; i < 4; i++) {
+            const a = (i * Math.PI) / 2 + Math.PI / 4;
+            g.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+            g.lineTo(Math.cos(a) * (r - 7), Math.sin(a) * (r - 7));
+          }
         } else {
+          g.rotate(this.time * 3);
           for (let i = 0; i < 4; i++) {
             const a0 = (i * Math.PI) / 2 + 0.25;
             g.moveTo(Math.cos(a0) * r, Math.sin(a0) * r);
@@ -426,6 +441,33 @@ export class Hud {
         }
         g.stroke();
         g.restore();
+      }
+      if (controller.hasLead && tOn) {
+        this.project(controller.lead, camera, pr);
+        const off = Math.hypot(pr.x - tx, pr.y - ty);
+        if (pr.onScreen && off > 6) {
+          // Where to shoot: a yellow pip with a dark outline, tied to the target by a thin line.
+          g.strokeStyle = COLORS.lead;
+          g.globalAlpha = 0.45;
+          g.lineWidth = 1.2;
+          g.beginPath();
+          g.moveTo(tx, ty);
+          g.lineTo(pr.x, pr.y);
+          g.stroke();
+          g.globalAlpha = 1;
+          g.lineWidth = 5;
+          g.strokeStyle = 'rgba(0,0,0,0.55)';
+          g.beginPath();
+          g.arc(pr.x, pr.y, 10.5, 0, Math.PI * 2);
+          g.stroke();
+          g.lineWidth = 2.5;
+          g.strokeStyle = COLORS.lead;
+          g.stroke();
+          g.fillStyle = COLORS.lead;
+          g.beginPath();
+          g.arc(pr.x, pr.y, 3.6, 0, Math.PI * 2);
+          g.fill();
+        }
       }
     }
 
@@ -463,15 +505,98 @@ export class Hud {
       // Soft red glow pooled against the screen edge on the side the hit came from.
       const ex = this.w / 2 + Math.cos(ang) * this.w * 0.5;
       const ey = this.h / 2 + Math.sin(ang) * this.h * 0.5;
-      const rad = Math.min(this.w, this.h) * 0.45;
+      const rad = Math.min(this.w, this.h) * 0.5;
       const grad = g.createRadialGradient(ex, ey, 0, ex, ey, rad);
-      grad.addColorStop(0, `rgba(255,40,50,${this.damageFlash * 0.42})`);
+      grad.addColorStop(0, `rgba(255,40,50,${this.damageFlash * 0.55})`);
       grad.addColorStop(1, 'rgba(255,40,50,0)');
       g.fillStyle = grad;
       g.fillRect(ex - rad, ey - rad, rad * 2, rad * 2);
+      // A red arc on a ring around the sight points at whoever hit you.
+      g.strokeStyle = `rgba(255,60,70,${Math.min(1, this.damageFlash * 1.4)})`;
+      g.lineWidth = 5;
+      g.beginPath();
+      g.arc(this.w / 2, this.h / 2, 112, ang - 0.3, ang + 0.3);
+      g.stroke();
     }
 
     this.drawRadar(ctx);
+  }
+
+  /** Radius of the lock ring around a target bracket of half-size s. */
+  private lockRadius(s: number): number {
+    return Math.max(s * 1.3, 28);
+  }
+
+  /** Reserve a label rect, sliding it down past any label already placed this frame. */
+  private placeLabel(x: number, y: number, w: number, h: number): number {
+    let ry = Math.max(4, y);
+    for (let tries = 0; tries < 5; tries++) {
+      const hit = this.labelRects.find((r) => x < r.x + r.w && x + w > r.x && ry < r.y + r.h && ry + h > r.y);
+      if (!hit) break;
+      ry = hit.y + hit.h + 2;
+    }
+    this.labelRects.push({ x, y: ry, w, h });
+    return ry;
+  }
+
+  private labelText(text: string, x: number, y: number, color: string, align: CanvasTextAlign, alpha: number): void {
+    const g = this.g;
+    g.textAlign = align;
+    g.globalAlpha = alpha;
+    g.lineWidth = 3;
+    g.strokeStyle = 'rgba(0,0,0,0.6)';
+    g.strokeText(text, x, y);
+    g.fillStyle = color;
+    g.fillText(text, x, y);
+    g.globalAlpha = 1;
+    g.textAlign = 'center';
+  }
+
+  /** Pulsing red vignette while the hull is low. */
+  private drawLowHull(player: Ship): void {
+    const f = player.hullFraction;
+    if (f >= 0.35) return;
+    const g = this.g;
+    const k = (0.35 - f) / 0.35;
+    const a = 0.16 + k * 0.22 + Math.sin(this.time * 6) * 0.07 * (0.5 + k);
+    const r0 = Math.min(this.w, this.h) * 0.42, r1 = Math.hypot(this.w, this.h) * 0.58;
+    const grad = g.createRadialGradient(this.w / 2, this.h / 2, r0, this.w / 2, this.h / 2, r1);
+    grad.addColorStop(0, 'rgba(255,30,40,0)');
+    grad.addColorStop(1, `rgba(255,30,40,${a})`);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, this.w, this.h);
+  }
+
+  /** A chevron on a ring around the sight pointing at a threat (works on and off screen). */
+  private drawThreat(pos: Vector3, player: Ship, radius: number, color: string, label: string): void {
+    const g = this.g;
+    _q.copy(player.quaternion).invert();
+    _v.copy(pos).sub(player.position).applyQuaternion(_q);
+    const ang = Math.atan2(-_v.y, _v.x);
+    const behind = _v.z > 0;
+    const pulse = 0.65 + 0.35 * Math.sin(this.time * 16);
+    const x = this.w / 2 + Math.cos(ang) * radius, y = this.h / 2 + Math.sin(ang) * radius;
+    g.save();
+    g.translate(x, y);
+    g.rotate(ang);
+    g.beginPath();
+    g.moveTo(12, 0);
+    g.lineTo(-7, 10);
+    g.lineTo(-2, 0);
+    g.lineTo(-7, -10);
+    g.closePath();
+    g.lineWidth = 3;
+    g.strokeStyle = 'rgba(0,0,0,0.7)';
+    g.stroke();
+    g.fillStyle = color;
+    g.globalAlpha = pulse;
+    g.fill();
+    g.restore();
+    g.globalAlpha = 1;
+    g.font = '700 11px "Chakra Petch", system-ui, sans-serif';
+    const lx = this.w / 2 + Math.cos(ang) * (radius + 26), ly = this.h / 2 + Math.sin(ang) * (radius + 26) + 4;
+    this.labelText(behind ? `${label} BEHIND` : label, lx, ly, color, 'center', pulse);
+    g.font = '600 11px "Chakra Petch", "Rajdhani", system-ui, sans-serif';
   }
 
   private drawCrosshair(x: number, y: number): void {
@@ -566,8 +691,16 @@ export class Hud {
     // of the corner panels.
     const rx = this.w / 2 - 70, ry = this.h / 2 - 110;
     const t = 1 / Math.sqrt((Math.cos(ang) / rx) ** 2 + (Math.sin(ang) / ry) ** 2);
-    const x = cx + Math.cos(ang) * t, y = cy - 10 + Math.sin(ang) * t;
-    const s = big ? 17 : 12;
+    let x = cx + Math.cos(ang) * t, y = cy - 10 + Math.sin(ang) * t;
+    // Never park an arrow on the radar.
+    const rad = this.radarGeom();
+    const rdx = x - rad.cx, rdy = y - rad.cy, rd = Math.hypot(rdx, rdy);
+    if (rd < rad.R + 20) {
+      x = rad.cx + (rdx / Math.max(rd, 1)) * (rad.R + 20);
+      y = rad.cy + (rdy / Math.max(rd, 1)) * (rad.R + 20);
+      if (rd < 1) x = rad.cx - rad.R - 20;
+    }
+    const s = big ? 20 : 14;
     g.save();
     g.translate(x, y);
     g.rotate(ang);
@@ -597,12 +730,16 @@ export class Hud {
     }
   }
 
+  /** Bottom right, above the weapons panel, so it never sits on the ship. */
+  private radarGeom(): { cx: number; cy: number; R: number } {
+    const R = Math.min(78, this.h * 0.1);
+    return { cx: this.w - R - 30, cy: this.h - R - 150, R };
+  }
+
   private drawRadar(ctx: HudContext): void {
     const g = this.g;
     const { player, world } = ctx;
-    const R = Math.min(78, this.h * 0.1);
-    // Bottom right, above the weapons panel, so it never sits on the ship.
-    const cx = this.w - R - 30, cy = this.h - R - 150;
+    const { cx, cy, R } = this.radarGeom();
     g.fillStyle = 'rgba(6,14,26,0.55)';
     g.strokeStyle = 'rgba(120,190,255,0.35)';
     g.lineWidth = 1;

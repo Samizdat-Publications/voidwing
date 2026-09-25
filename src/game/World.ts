@@ -2,7 +2,7 @@ import { Camera, Quaternion, Scene, Vector3 } from 'three';
 import { Emitter } from '../core/Events';
 import { Rng } from '../core/math';
 import type { Assets } from '../render/Assets';
-import type { Effects } from '../render/Effects';
+import type { EffectsApi } from '../render/Effects';
 import { TEAM_RIM, applyTeamRim } from '../render/materials';
 import { BomberAI, DogfighterAI, WingmanAI } from './AI';
 import { AsteroidField } from './Asteroids';
@@ -61,7 +61,7 @@ export class World {
   constructor(
     readonly scene: Scene,
     readonly assets: Assets,
-    readonly effects: Effects,
+    readonly effects: EffectsApi,
     seed: number,
   ) {
     this.rng = new Rng(seed);
@@ -97,7 +97,7 @@ export class World {
     this.byId.set(ship.id, ship);
     this.scene.add(ship.object);
     // Team-tinted silhouette rim so ships read against black space.
-    const rim = ship.kind === 'player' ? 0.45 : ship.team === 'player' ? 0.9 : 1.9;
+    const rim = ship.kind === 'player' ? 0.3 : ship.team === 'player' ? 0.9 : 1.9;
     applyTeamRim(ship.model, TEAM_RIM[ship.team], rim);
     return ship;
   }

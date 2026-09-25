@@ -27,6 +27,7 @@ export class CameraRig {
   private orbitAngle = 0.6;
   readonly cinePos = new Vector3();
   readonly cineLook = new Vector3();
+  cineLerp = 1.6;
   private readonly deathPos = new Vector3();
   private readonly deathLook = new Vector3();
 
@@ -43,7 +44,10 @@ export class CameraRig {
   startDeath(at: Vector3): void {
     this.mode = 'death';
     this.deathLook.copy(at);
-    this.deathPos.copy(this.camera.position);
+    // Pull well back from the wreck so its fireball does not fill the screen.
+    _look.subVectors(this.camera.position, at);
+    const d = Math.max(_look.length(), 1);
+    this.deathPos.copy(at).addScaledVector(_look.normalize(), Math.max(d, 70)).add(_off.set(0, 14, 0));
   }
 
   update(dt: number, ship: Ship | null): void {
@@ -53,7 +57,7 @@ export class CameraRig {
       this.smoothQ.slerp(ship.quaternion, dampFactor(8.5, dt));
       this.boostBlend = damp(this.boostBlend, ship.boosting ? 1 : 0, 3.5, dt);
       // High and back: the ship sits in the lower third, clear of the crosshair.
-      _off.set(0, 7.2, 27 + this.boostBlend * 4);
+      _off.set(0, 8.8, 33 + this.boostBlend * 4);
       cam.position.copy(_off).applyQuaternion(this.smoothQ).add(ship.position);
       cam.quaternion.copy(this.smoothQ);
       this.setFov(this.baseFov + this.boostBlend * 9, dt);
@@ -70,10 +74,10 @@ export class CameraRig {
       // Drift back and keep the wreck in frame.
       _look.subVectors(this.deathPos, this.deathLook).normalize();
       this.deathPos.addScaledVector(_look, 6 * dt);
-      cam.position.copy(this.deathPos);
+      cam.position.lerp(this.deathPos, dampFactor(5, dt));
       cam.lookAt(this.deathLook);
     } else if (this.mode === 'cinematic') {
-      cam.position.lerp(this.cinePos, dampFactor(1.6, dt));
+      cam.position.lerp(this.cinePos, dampFactor(this.cineLerp, dt));
       // Ease the view toward the look target rather than snapping to it.
       _q.copy(cam.quaternion);
       cam.lookAt(this.cineLook);

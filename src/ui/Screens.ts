@@ -9,6 +9,8 @@ export interface EndStats {
   asteroids: number;
   deaths: number;
   wave: number;
+  /** What killed the player (failure screen only). */
+  cause?: string;
 }
 
 const CONTROLS: [string, string][] = [
@@ -32,6 +34,7 @@ export class Screens {
   private readonly screens = new Map<ScreenName, HTMLDivElement>();
   current: ScreenName = 'loading';
   onAction: (action: string) => void = () => undefined;
+  onHover: () => void = () => undefined;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
@@ -50,7 +53,7 @@ export class Screens {
     );
     this.add(
       'gameover',
-      `<div class="panel center"><h2 class="bad">Mission failed</h2><div class="stats"></div>
+      `<div class="panel center"><h2 class="bad">Mission failed</h2><div class="cause"></div><div class="stats"></div>
        <button class="btn primary" data-action="retry">Retry from checkpoint</button><button class="btn" data-action="restart">Restart mission</button><button class="btn" data-action="title">Quit to title</button></div>`,
     );
     this.add(
@@ -58,6 +61,10 @@ export class Screens {
       `<div class="panel center"><h2 class="good">Mission complete</h2><div class="stats"></div>
        <button class="btn primary" data-action="restart">Fly again</button><button class="btn" data-action="title">Title screen</button></div>`,
     );
+    this.root.addEventListener('mouseover', (e) => {
+      const btn = (e.target as HTMLElement).closest('[data-action]');
+      if (btn && !btn.contains(e.relatedTarget as Node)) this.onHover();
+    });
     this.root.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest('[data-action]') as HTMLElement | null;
       if (btn) {
@@ -80,6 +87,8 @@ export class Screens {
     for (const [n, div] of this.screens) div.classList.toggle('show', n === name);
     this.root.classList.toggle('active', name !== 'none');
     if (stats) {
+      const cause = this.screens.get(name)?.querySelector('.cause');
+      if (cause) cause.textContent = stats.cause ?? '';
       const div = this.screens.get(name)?.querySelector('.stats');
       if (div) {
         div.innerHTML = [
