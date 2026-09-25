@@ -36,6 +36,8 @@ interface ShipFx {
   smokeTimer: number;
   /** Ship-local point where damage smoke and fire come out. */
   wound: Vector3;
+  /** Materials faded for the see-through effect (player only). */
+  fadeMats: MeshStandardMaterial[];
 }
 
 interface Look {
@@ -49,8 +51,8 @@ interface Look {
 const LOOKS: Record<string, Look> = {
   player: { flare: new Color(0.35, 0.7, 1).multiplyScalar(0.9), trail: new Color(0.25, 0.65, 1).multiplyScalar(0.8), width: 0.9, flareSize: 2.2, shield: 0x55ccff },
   wingman: { flare: new Color(0.45, 0.6, 1).multiplyScalar(2.8), trail: new Color(0.3, 0.45, 1).multiplyScalar(1.2), width: 1.3, flareSize: 4.5, shield: 0x6f8cff },
-  razor: { flare: new Color(1, 0.45, 0.2).multiplyScalar(4), trail: new Color(1, 0.33, 0.12).multiplyScalar(2.1), width: 2.2, flareSize: 8, shield: 0xff5a3a },
-  maul: { flare: new Color(1, 0.5, 0.2).multiplyScalar(4), trail: new Color(1, 0.4, 0.1).multiplyScalar(2), width: 4.3, flareSize: 14, shield: 0xff7a2a },
+  razor: { flare: new Color(1, 0.45, 0.2).multiplyScalar(4), trail: new Color(1, 0.33, 0.12).multiplyScalar(3.2), width: 2.8, flareSize: 8, shield: 0xff5a3a },
+  maul: { flare: new Color(1, 0.5, 0.2).multiplyScalar(4), trail: new Color(1, 0.4, 0.1).multiplyScalar(3), width: 5.2, flareSize: 16, shield: 0xff7a2a },
 };
 
 const FALLBACK_EXHAUST: Record<string, Vector3[]> = {
@@ -65,6 +67,7 @@ const _v = new Vector3();
 const _d = new Vector3();
 const _c = new Color();
 const MISSILE_GLOW = new Color(1, 0.8, 0.5).multiplyScalar(3.5);
+const BOLT_GLOW = new Color(0.4, 0.9, 1).multiplyScalar(2.6);
 const ENEMY_MISSILE_GLOW = new Color(1, 0.35, 0.2).multiplyScalar(3.5);
 
 /** Speed streaks drifting past the camera: the main cue for how fast you are going. */
@@ -136,6 +139,9 @@ export class FX implements EffectsApi {
   private time = 0;
   private world: World | null = null;
   private readonly camPos = new Vector3();
+  private playerFade = 1;
+  /** Set by the game from the HUD each frame: 1 = solid, lower = see-through. */
+  playerFadeTarget = 1;
 
   constructor(scene: Scene, assets: Assets) {
     this.particles = new Particles(scene);
@@ -210,6 +216,13 @@ export class FX implements EffectsApi {
     });
   }
 
+  /** Opacity for the player's hull (materials were made transparent-ready at spawn). */
+  private applyFade(ship: Ship, alpha: number): void {
+    const fx = this.ships.get(ship);
+    if (!fx) return;
+    for (const m of fx.fadeMats) m.opacity = alpha;
+  }
+
   private releaseShip(ship: Ship, fx: ShipFx): void {
     for (const t of fx.trails) this.trails.release(t);
     if (fx.shield) ship.object.remove(fx.shield.mesh);
@@ -244,8 +257,21 @@ export class FX implements EffectsApi {
     const trails = exhausts.map(() => this.trails.create(look.trail, look.width, ship.kind === 'maul' ? 0.8 : 0.55));
     const r = ship.radius;
     const wound = new Vector3(fxRng.range(0.25, 0.5) * r * (fxRng.chance(0.5) ? 1 : -1), fxRng.range(0, 0.12) * r, fxRng.range(-0.1, 0.35) * r);
-    const fx: ShipFx = { exhausts, trails, glowMats, hullMats, flash: 0, shield: null, shieldUntil: 0, smokeTimer: 0, wound };
+    const fx: ShipFx = { exhausts, trails, glowMats, hullMats, flash: 0, shield: null, shieldUntil: 0, smokeTimer: 0, wound, fadeMats: [] };
     this.ships.set(ship, fx);
+    if (ship.kind === 'player') {
+      // Transparent-ready from the start so fading later never recompiles a shader.
+      ship.model.traverse((o) => {
+        const mesh = o as Mesh;
+        if (!mesh.isMesh || mesh.userData.engineGlow) return;
+        for (const m of (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as MeshStandardMaterial[]) {
+          if (!m.isMeshStandardMaterial) continue;
+          m.transparent = true;
+          m.opacity = 1;
+          fx.fadeMats.push(m);
+        }
+      });
+    }
     return fx;
   }
 
@@ -283,6 +309,14 @@ export class FX implements EffectsApi {
       // Ships removed without a destroyed event (retry / restart).
       for (const [ship, fx] of this.ships) if (!w.ships.includes(ship)) this.releaseShip(ship, fx);
       for (const m of w.missiles.list) this.updateMissile(m);
+      // The player's lasers get a glowing head so their fire blooms even seen from behind.
+      w.projectiles.forEachHead('player', (x, y, z) => this.particles.glow(_p.set(x, y, z), 2.4, BOLT_GLOW));
+      // Fade the player's own ship while the target or lead dot is behind it on screen.
+      const p = w.player;
+      if (p && p.alive) {
+        this.playerFade += (this.playerFadeTarget - this.playerFade) * Math.min(1, dt * 8);
+        this.applyFade(p, this.playerFade);
+      }
       for (const g of w.capital.generators) {
         const ring = g.object.getObjectByName('Gen_Ring');
         if (ring && g.alive) ring.rotation.z += dt * 0.9;
@@ -294,7 +328,7 @@ export class FX implements EffectsApi {
   /** Needs the camera, so the game calls it separately after the camera moves. */
   updateView(dt: number, cameraPos: Vector3, viewportHeight: number, fov: number): void {
     this.camPos.copy(cameraPos);
-    // Readability at dogfight range: other ships are drawn up to 2.8x larger with distance
+    // Readability at dogfight range: other ships are drawn up to 3.6x larger with distance
     // (visual only; hit spheres keep their real size), and their team rim glows brighter so a far
     // fighter reads as a lit silhouette. The player's current target pulses on top of that.
     if (this.world) {
@@ -303,9 +337,9 @@ export class FX implements EffectsApi {
       for (const s of this.world.ships) {
         if (s.kind === 'player' || !s.alive) continue;
         const d = s.position.distanceTo(cameraPos);
-        s.model.scale.setScalar(Math.min(2.8, Math.max(1, 1 + (d - 240) / 400)));
+        s.model.scale.setScalar(Math.min(3.6, Math.max(1, 1 + (d - 200) / 300)));
         const far = Math.min(1.8, Math.max(0, (d - 220) / 330));
-        setRimBoost(s.model, (s === target ? 1.9 + pulse : 1) + far);
+        setRimBoost(s.model, (s === target ? 2.8 + pulse : 1) + far);
       }
     }
     this.trails.update(dt, cameraPos);
@@ -317,10 +351,14 @@ export class FX implements EffectsApi {
     const look = LOOKS[ship.kind] ?? LOOKS.razor;
     const thrust = 0.55 + ship.throttle * 0.45 + (ship.boosting ? 0.7 : 0);
     const flicker = 0.9 + fxRng.next() * 0.2;
+    // Engines face backward: a ship flying at the camera shows little flare, so its hull reads.
+    ship.forward(_d);
+    const facing = Math.max(0, _d.dot(_v.subVectors(this.camPos, ship.position).normalize()));
+    const flareScale = ship.kind === 'player' ? 1 : (1 - facing) * (1 - facing) * 0.85 + 0.15;
     for (let i = 0; i < fx.exhausts.length; i++) {
       fx.exhausts[i].getWorldPosition(_p);
       this.trails.push(fx.trails[i], _p);
-      this.particles.glow(_p, look.flareSize * thrust * flicker, look.flare);
+      this.particles.glow(_p, look.flareSize * thrust * flicker * flareScale, look.flare);
       if (ship.boosting) this.particles.glow(_p, look.flareSize * 2.2, _c.copy(look.flare).multiplyScalar(0.35));
     }
     // The player's nozzles sit in the middle of the view: keep them from blooming into white discs.
@@ -335,8 +373,11 @@ export class FX implements EffectsApi {
       fx.shield.mesh.visible = left > 0;
       if (left > 0) {
         // The whole bubble flashes on a hit and fades, on top of the local impact ripple.
-        fx.shield.material.uniforms.uIdle.value = Math.min(1, left / 1.4) ** 3 * 0.8;
-        fx.shield.update(this.time, ship.kind === 'player' ? 1.35 : 1.3);
+        // The player's own bubble shows only the impact ripple: a full flash would cover the sight.
+        // Enemy bubbles shimmer lightly: under sustained fire a full flash would hide the ship itself.
+        const own = ship.kind === 'player';
+        fx.shield.material.uniforms.uIdle.value = Math.min(1, left / 1.4) ** (own ? 4 : 3) * (own ? 0.8 : 0.28);
+        fx.shield.update(this.time, own ? 1.1 : 0.85);
       }
     }
     // Damaged ships burn from a wound on the hull: flames (visible against black space) and

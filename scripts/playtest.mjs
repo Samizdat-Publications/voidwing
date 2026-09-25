@@ -107,6 +107,8 @@ async function botStep(st) {
     await releaseAll();
     return;
   }
+  // The lose run is a pilot who neither shoots nor dodges: it holds its course.
+  if (bot.passive) return;
   // Mouse: steer the aim ring onto the lead point.
   let dx = (a.dYaw / st.radPerPx) * 0.85;
   let dy = (-a.dPitch / st.radPerPx) * 0.85;
@@ -164,14 +166,14 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
       if (picked && !(await page.evaluate(() => window.__VW.showcaseRockAlive()))) {
         if (fired) await page.mouse.up();
         fired = false;
-        await sleep(650);
+        await sleep(220);
         await shot('asteroid_split');
       }
       break;
     }
     picked = true;
     // Boost in until close, so the split happens near the camera.
-    const wantBoost = a.dist > 450;
+    const wantBoost = a.dist > 620;
     if (wantBoost !== boosting) {
       if (wantBoost) await page.keyboard.down('Shift');
       else await page.keyboard.up('Shift');
@@ -182,7 +184,8 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
     bot.mx += dx;
     bot.my += dy;
     await page.mouse.move(bot.mx, bot.my);
-    const want = a.noseErr < 0.05 && a.dist < 270;
+    // Fire from outside the collision assist's look-ahead, or the ship steers off the rock.
+    const want = a.noseErr < 0.05 && a.dist < 300;
     if (want !== fired) {
       if (want) await page.mouse.down();
       else await page.mouse.up();
@@ -306,6 +309,10 @@ try {
   await page.click('.screen.show [data-action="launch"]');
   await page.mouse.move(cx, cy);
   await sleep(300);
+  // Throttle up the way a player would (the ship starts at 55 %).
+  await page.keyboard.down('KeyW');
+  await sleep(550);
+  await page.keyboard.up('KeyW');
   const locked = await page.evaluate(() => document.pointerLockElement !== null);
   log('pointer lock after launch:', locked);
 
@@ -317,6 +324,25 @@ try {
     await shot('pause_menu');
     await page.click('.screen.show [data-action="resume"]');
     await sleep(1500);
+    outcome = (await state()).gameState;
+  } else if (scenario === 'ui') {
+    // Every menu screen: title (above), how to fly, settings, then in-flight pause and its settings.
+    await page.mouse.move(cx, cy);
+    await page.keyboard.press('Escape');
+    await sleep(700);
+    await shot('pause_menu');
+    await page.click('.screen.show [data-action="howto"]');
+    await sleep(500);
+    await shot('howto');
+    await page.click('.screen.show [data-action="back"]');
+    await sleep(300);
+    await page.click('.screen.show [data-action="settings"]');
+    await sleep(500);
+    await shot('settings');
+    await page.click('.screen.show [data-action="back"]');
+    await sleep(300);
+    await page.click('.screen.show [data-action="resume"]');
+    await sleep(1200);
     outcome = (await state()).gameState;
   } else if (scenario === 'showcase') {
     await sleep(1500);

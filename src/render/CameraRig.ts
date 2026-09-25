@@ -1,4 +1,4 @@
-import { PerspectiveCamera, Quaternion, Vector3 } from 'three';
+import { Matrix4, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { clamp, damp, dampFactor } from '../core/math';
 import type { Ship } from '../game/Ship';
 
@@ -9,6 +9,9 @@ const _q = new Quaternion();
 const _shakeQ = new Quaternion();
 const _look = new Vector3();
 const _e = new Vector3();
+const _m = new Matrix4();
+const _up = new Vector3();
+const _zero = new Vector3();
 
 /** Chase camera with lag, boost pull-back, FOV kick and trauma-based shake. */
 export class CameraRig {
@@ -30,6 +33,8 @@ export class CameraRig {
   cineLerp = 1.6;
   private readonly deathPos = new Vector3();
   private readonly deathLook = new Vector3();
+  /** Where the player is steering (mouse aim). The chase camera looks along it. */
+  readonly aimDir = new Vector3(0, 0, -1);
 
   constructor(readonly camera: PerspectiveCamera) {}
 
@@ -39,6 +44,7 @@ export class CameraRig {
 
   snapTo(ship: Ship): void {
     this.smoothQ.copy(ship.quaternion);
+    ship.forward(this.aimDir);
   }
 
   startDeath(at: Vector3): void {
@@ -54,10 +60,15 @@ export class CameraRig {
     this.time += dt;
     const cam = this.camera;
     if (this.mode === 'chase' && ship) {
-      this.smoothQ.slerp(ship.quaternion, dampFactor(8.5, dt));
+      // Mouse-aim camera: look along the aim direction (keeping the ship's roll), so whatever you
+      // steer at sits at the centre above your ship and the gun cross swings onto it.
+      ship.up(_up);
+      _m.lookAt(_zero, this.aimDir, _up);
+      _q.setFromRotationMatrix(_m);
+      this.smoothQ.slerp(_q, dampFactor(9, dt));
       this.boostBlend = damp(this.boostBlend, ship.boosting ? 1 : 0, 3.5, dt);
       // High and back: the ship sits in the lower third, clear of the crosshair.
-      _off.set(0, 10, 38 + this.boostBlend * 4);
+      _off.set(0, 13, 42 + this.boostBlend * 4);
       cam.position.copy(_off).applyQuaternion(this.smoothQ).add(ship.position);
       cam.quaternion.copy(this.smoothQ);
       this.setFov(this.baseFov + this.boostBlend * 9, dt);

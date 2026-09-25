@@ -13,6 +13,7 @@ import { PostFX } from '../render/PostFX';
 import { Sky } from '../render/Sky';
 import { Hud } from '../ui/Hud';
 import { Screens, type EndStats } from '../ui/Screens';
+import { loadSettings, saveSettings, type UserSettings } from '../ui/SettingsStore';
 import { ARENA, type Difficulty } from './config';
 import { Mission, PHASES } from './Mission';
 import { PlayerController, type PlayerSettings } from './PlayerController';
@@ -50,6 +51,8 @@ export class Game {
   state: GameState = 'loading';
   stateTime = 0;
   readonly settings: Settings = { sensitivity: 1, invertY: false, autoLevel: true, difficulty: 'normal' };
+  /** Everything the settings screen edits (persisted), mirrored into `settings` and the audio mix. */
+  private readonly userSettings: UserSettings = loadSettings();
   timeScale = 1;
   private deathCause = '';
   private lastRockHit = -99;
@@ -73,7 +76,13 @@ export class Game {
     this.seed = Number(this.params.get('seed') ?? 1337) | 0;
     this.godMode = this.params.has('god');
     const diff = this.params.get('diff');
-    if (diff === 'easy' || diff === 'normal' || diff === 'hard') this.settings.difficulty = diff;
+    if (diff === 'easy' || diff === 'normal' || diff === 'hard') this.userSettings.difficulty = diff;
+    this.applySettings(this.userSettings);
+    this.screens.bindSettings(this.userSettings);
+    this.screens.onSettings = (s) => {
+      this.applySettings(s);
+      saveSettings(s);
+    };
     this.engine.onResize((w, h) => {
       this.hud.resize(w, h);
       this.post?.setSize(w, h, this.engine.pixelRatio);
@@ -160,6 +169,7 @@ export class Game {
     });
     this.world.events.on('shieldHit', ({ entity, point, source }) => {
       if (entity === this.world.player) {
+        this.hud.onShieldHit();
         this.hud.onPlayerDamaged(source && source.alive ? source.position : point);
         this.rig.addTrauma(0.12);
       }
@@ -281,6 +291,7 @@ export class Game {
   pause(): void {
     if (this.state !== 'playing') return;
     this.setState('paused');
+    this.hud.setPaused(true);
     this.screens.show('pause');
     this.input.exitLock();
     this.input.releaseAll();
@@ -288,9 +299,23 @@ export class Game {
 
   resume(): void {
     if (this.state !== 'paused') return;
+    this.hud.setPaused(false);
     this.setState('playing');
     this.screens.show('none');
     this.input.requestLock();
+  }
+
+  /** Mirror the settings screen into flight controls, difficulty (next mission) and the audio mix. */
+  private applySettings(s: UserSettings): void {
+    this.settings.sensitivity = s.sensitivity;
+    this.settings.invertY = s.invertY;
+    this.settings.autoLevel = s.autoLevel;
+    this.settings.difficulty = s.difficulty;
+    this.world?.setDifficulty(s.difficulty);
+    this.audio.volume.master = s.master;
+    this.audio.volume.music = s.music;
+    this.audio.volume.sfx = s.sfx;
+    this.audio.applyVolumes();
   }
 
   setGod(on: boolean): void {
@@ -355,7 +380,7 @@ export class Game {
     if (p) {
       p.invulnerable = true;
       const away = _v.subVectors(p.position, this.world.capital.position).normalize();
-      for (let k = 0; k <= 1200; k += 240) this.world.asteroids.vaporize(_v2.copy(p.position).addScaledVector(away, k), 170, this.world);
+      for (let k = 0; k <= 1400; k += 200) this.world.asteroids.vaporize(_v2.copy(p.position).addScaledVector(away, k), 260, this.world);
       this.updateEscape(0);
       this.rig.camera.position.copy(this.rig.cinePos);
     }
@@ -398,6 +423,8 @@ export class Game {
     const end = st.endTime > 0 ? st.endTime : this.world.time;
     return {
       time: formatTime(end - st.startTime),
+      seconds: end - st.startTime,
+      difficulty: this.settings.difficulty,
       kills: st.kills,
       score: st.score,
       accuracy: p && p.shotsFired > 0 ? p.shotsHit / p.shotsFired : 0,
@@ -467,7 +494,11 @@ export class Game {
     const w = this.world;
     const input = this.input;
 
-    if (this.state === 'playing' && (input.wasPressed('Escape') || input.wasPressed('KeyP'))) {
+    if (this.state === 'title' && this.screens.current === 'title' && (input.wasPressed('Enter') || input.wasPressed('NumpadEnter'))) {
+      this.audio.unlock();
+      this.audio.ui('click');
+      this.startMission();
+    } else if (this.state === 'playing' && (input.wasPressed('Escape') || input.wasPressed('KeyP'))) {
       this.pause();
     } else if (this.state === 'paused' && input.wasPressed('KeyP')) {
       this.resume();
@@ -496,8 +527,9 @@ export class Game {
     }
     if (this.state === 'finale' && w.player) this.updateEscape(dt);
     if (this.state !== 'paused') {
+      this.rig.aimDir.copy(this.controller.aimDir);
       this.rig.update(dt, w.player && w.player.alive ? w.player : null);
-      w.asteroids.pushOut(this.engine.camera.position, 8);
+      w.asteroids.pushOut(this.engine.camera.position, this.state === 'finale' ? 45 : 8);
       this.engine.camera.updateMatrixWorld();
     }
     const cam = this.engine.camera;
@@ -512,6 +544,7 @@ export class Game {
         this.audio.ui('deny');
       }
       this.hud.update(dt, { world: w, player: p, controller: this.controller, mission: this.mission, camera: this.engine.camera });
+      this.effects.playerFadeTarget = this.hud.overlapShip ? 0.3 : 1;
     }
   }
 }

@@ -361,7 +361,7 @@ class DebrisLayer {
         mat.onBeforeCompile = (shader) => {
           shader.fragmentShader = shader.fragmentShader.replace(
             '#include <emissivemap_fragment>',
-            '#include <emissivemap_fragment>\n#ifdef USE_INSTANCING_COLOR\n totalEmissiveRadiance *= vColor.r * vColor.r;\n#endif',
+            '#include <emissivemap_fragment>\n#ifdef USE_INSTANCING_COLOR\n totalEmissiveRadiance *= vColor.r * vColor.r * vColor.r * 0.6;\n#endif',
           );
         };
         mat.customProgramCacheKey = () => 'debris-hot';
@@ -605,7 +605,7 @@ export class Particles {
       }
       r.mesh.scale.setScalar(r.radius * (0.04 + 0.96 * (1 - Math.pow(1 - t, 2.2))));
       r.mat.uniforms.uAlpha.value = Math.pow(1 - t, 1.2) * 1.2;
-      r.mat.uniforms.uThick.value = 0.12 - 0.085 * t;
+      r.mat.uniforms.uThick.value = 0.08 - 0.055 * t;
     }
     for (const l of this.lights) {
       if (l.power <= 0) continue;
@@ -714,7 +714,7 @@ export class Particles {
     if (this.debris) {
       for (let i = 0; i < Math.round(5 * Math.min(sq, 3)); i++) {
         fxRng.unitVector(_v2).multiplyScalar(fxRng.range(15, 45) * Math.min(sq, 2)).addScaledVector(vel, 0.6);
-        this.debris.spawn(false, pos, _v2, fxRng.range(0.8, 2.2) * Math.min(s, 3), fxRng.range(2.5, 4.5));
+        this.debris.spawn(false, pos, _v2, fxRng.range(0.5, 1.3) * Math.min(s, 3), fxRng.range(2.5, 4.5));
       }
     }
     if (shell && s >= 1.8) this.shell(pos, 14 * s, 0.42, C(0xffc080, 1.8));
@@ -724,8 +724,8 @@ export class Particles {
   /** Energy splash where a bolt hits: sparks and a small flash (blue on shields). */
   hit(pos: Vector3, dir: Vector3, shield: boolean, color: Color): void {
     const flashCol = shield ? C(0x70c8ff, 3) : color;
-    this.add.spawn({ pos, vel: _v.set(0, 0, 0), life: 0.1, size0: 3.6, size1: 6.5, color0: flashCol, color1: flashCol, alpha0: 1, alpha1: 0, hot: 0.8 });
-    for (let i = 0; i < 6; i++) {
+    this.add.spawn({ pos, vel: _v.set(0, 0, 0), life: 0.07, size0: 1.8, size1: 3.2, color0: flashCol, color1: flashCol, alpha0: 0.65, alpha1: 0, hot: 0.4 });
+    for (let i = 0; i < 4; i++) {
       fxRng.unitVector(_v2).addScaledVector(dir, -1.2).normalize().multiplyScalar(fxRng.range(30, 90));
       this.sparks.spawn(pos, _v2, fxRng.range(0.15, 0.35), shield ? C(0x80d0ff, 1.5) : SPARK);
     }
@@ -765,7 +765,7 @@ export class Particles {
         drag: 0.7,
       });
     }
-    this.add.spawn({ pos, vel: _v.set(0, 0, 0), life: 0.25, size0: radius * 1.5, size1: radius * 2.5, color0: C(0xffd6a0, 2), color1: C(0x805030, 0.5), alpha0: 0.8, alpha1: 0, hot: 0.5 });
+    this.add.spawn({ pos, vel: _v.set(0, 0, 0), life: 0.4, size0: radius * 2, size1: radius * 4, color0: C(0xffe2b0, 2.4), color1: C(0x805030, 0.4), alpha0: 0.9, alpha1: 0, hot: 0.7 });
     for (let i = 0; i < 14; i++) {
       fxRng.unitVector(_v2).multiplyScalar(fxRng.range(20, 60));
       this.sparks.spawn(pos, _v2, fxRng.range(0.3, 0.7), C(0xffb070, 1));
@@ -825,7 +825,7 @@ export class Particles {
     const still = new Vector3();
     this.add.spawn({ pos, vel: still, life: 0.5, size0: 40, size1: 230, color0: C(0xfff6e8, 2.4), color1: C(0xffa050, 1.0), alpha0: 1, alpha1: 0, hot: 0.8 });
     this.add.spawn({ pos, vel: still, life: 2.4, size0: 140, size1: 430, color0: C(0xff9440, 0.8), color1: C(0x5a1606, 0.2), alpha0: 0.45, alpha1: 0, hot: 0.2 });
-    this.ring(pos, _v2.copy(normal).addScaledVector(tilt, 0.45).normalize(), 1500, 2.6, C(0xffd2a0, 1.9));
+    this.ring(pos, _v2.copy(normal).addScaledVector(tilt, 0.45).normalize(), 1500, 2.6, C(0xffb070, 2.1));
     _v.crossVectors(normal, tilt).normalize();
     this.ring(pos, _v2.copy(normal).addScaledVector(_v, 0.35).addScaledVector(tilt, 0.2).normalize(), 850, 1.9, C(0x9cc4ff, 1.4));
     for (let i = 0; i < 160; i++) {
@@ -836,7 +836,7 @@ export class Particles {
       for (let i = 0; i < 60; i++) {
         fxRng.unitVector(_v2);
         _v.copy(pos).addScaledVector(_v2, fxRng.range(10, 120));
-        this.debris.spawn(false, _v, _v2.multiplyScalar(fxRng.range(40, 170)), fxRng.range(6, 18), fxRng.range(4.5, 7.5));
+        this.debris.spawn(false, _v, _v2.multiplyScalar(fxRng.range(40, 170)), fxRng.range(4, 11), fxRng.range(4.5, 7.5));
       }
     }
     this.flashLight(pos, 500, 3200, 1.8, 0xffc080);

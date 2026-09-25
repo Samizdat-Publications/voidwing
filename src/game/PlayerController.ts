@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
 import type { Input } from '../core/Input';
 import { clamp, leadPoint, localAngles } from '../core/math';
-import { bankRoll } from './AI';
+import { avoidObstacles, bankRoll } from './AI';
 import { ARENA, PLAYER } from './config';
 import type { Entity } from './Entity';
 import type { Ship, ShipController } from './Ship';
@@ -19,6 +19,8 @@ const _right = new Vector3();
 const _axis = new Vector3();
 const _to = new Vector3();
 const _ang = { yaw: 0, pitch: 0 };
+const _steer = new Vector3();
+const _avoided = new Vector3();
 
 /** Turns mouse and keys into ship controls, and owns targeting and missile lock. */
 export class PlayerController implements ShipController {
@@ -83,7 +85,13 @@ export class PlayerController implements ShipController {
       }
     }
 
-    localAngles(ship.quaternion, this.aimDir, _ang);
+    // Collision assist: the ship's turn (not the aim) bends around rocks and the carrier shield
+    // right ahead, so holding the aim on a target behind a rock slides past it instead of grinding.
+    _avoided.copy(this.aimDir);
+    // Late and gentle compared with the AI: only rocks about 1.3 s ahead, with a tight margin.
+    avoidObstacles(ship, _avoided, world, 1.3, 12);
+    _steer.copy(this.aimDir).lerp(_avoided, 0.8).normalize();
+    localAngles(ship.quaternion, _steer, _ang);
     c.yaw = clamp(_ang.yaw * PLAYER.steerGain, -1, 1);
     c.pitch = clamp(_ang.pitch * PLAYER.steerGain, -1, 1);
 

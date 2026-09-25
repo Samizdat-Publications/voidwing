@@ -43,6 +43,8 @@ export interface Asteroid {
   hp: number;
   maxHp: number;
   flash: number;
+  /** Fresh fragments start hot and cool over about a second. */
+  hot: number;
   stamp: number;
 }
 
@@ -128,6 +130,7 @@ export class AsteroidField {
       hp: TIER_HP[tier],
       maxHp: TIER_HP[tier],
       flash: 0,
+      hot: 0,
       stamp: 0,
     };
     this.list.push(a);
@@ -142,6 +145,7 @@ export class AsteroidField {
       _q.setFromAxisAngle(a.spinAxis, a.spinRate * dt);
       a.quaternion.premultiply(_q);
       if (a.flash > 0) a.flash = Math.max(0, a.flash - dt * 6);
+      if (a.hot > 0) a.hot = Math.max(0, a.hot - dt * 0.8);
     }
     if (this.list.length > 400 && this.destroyedCount > 60) {
       // Compact the list now and then.
@@ -251,15 +255,16 @@ export class AsteroidField {
     world.events.emit('asteroidDestroyed', { position: a.position.clone(), radius: a.radius, tier: a.tier });
     if (a.tier >= 3) return;
     const childTier = (a.tier + 1) as Tier;
-    const n = a.tier === 1 ? fxRng.int(3, 4) : fxRng.int(2, 3);
+    const n = a.tier === 1 ? fxRng.int(2, 3) : 2;
     for (let i = 0; i < n; i++) {
       const dir = fxRng.unitVector(new Vector3());
-      const r = a.radius * fxRng.range(0.36, 0.5);
+      const r = a.radius * fxRng.range(0.45, 0.6);
       const pos = a.position.clone().addScaledVector(dir, a.radius * 0.5);
       // Fragments drift apart slowly so the break-up reads on screen.
       const vel = a.velocity.clone().addScaledVector(dir, fxRng.range(9, 20) * (childTier === 3 ? 1.3 : 1));
       const child = this.add(childTier, pos, r, vel);
       child.spinRate *= 2.5;
+      child.hot = 1;
     }
   }
 
@@ -278,8 +283,10 @@ export class AsteroidField {
       _s.setScalar(a.scale);
       _m.compose(a.position, a.quaternion, _s);
       mesh.setMatrixAt(n, _m);
-      if (a.flash > 0) _flash.setRGB(1 + a.flash * 2.5, 1 + a.flash * 1.6, 1 + a.flash * 1.0);
-      else _flash.copy(_white);
+      if (a.flash > 0 || a.hot > 0) {
+        const h = a.hot * a.hot;
+        _flash.setRGB(1 + a.flash * 2.5 + h * 3.2, 1 + a.flash * 1.6 + h * 1.3, 1 + a.flash * 1.0 + h * 0.3);
+      } else _flash.copy(_white);
       mesh.setColorAt(n, _flash);
     }
     for (let k = 0; k < this.meshes.length; k++) {

@@ -43,9 +43,10 @@ export function bankRoll(ship: Ship, bank: number): number {
 }
 
 /** Blend in a push away from rocks and the carrier shield ahead of the ship. */
-export function avoidObstacles(ship: Ship, desired: Vector3, world: World): Vector3 {
+/** Bend `desired` around rocks and the carrier shield ahead. lookTime (s) and margin (m) set how early. */
+export function avoidObstacles(ship: Ship, desired: Vector3, world: World, lookTime = 2.2, margin = 30): Vector3 {
   const speed = Math.max(ship.speed, 40);
-  const look = Math.max(140, speed * 2.2);
+  const look = Math.max(lookTime * 64, speed * lookTime);
   _fwd.copy(ship.velocity).normalize();
   if (_fwd.lengthSq() < 0.5) ship.forward(_fwd);
   _avoid.set(0, 0, 0);
@@ -56,7 +57,7 @@ export function avoidObstacles(ship: Ship, desired: Vector3, world: World): Vect
     if (along < -a.radius || along > look + a.radius) return;
     _rel.addScaledVector(_fwd, -along); // perpendicular offset from our path to the rock
     const dist = _rel.length();
-    const clearance = a.radius + ship.radius + 30;
+    const clearance = a.radius + ship.radius + margin;
     if (dist > clearance) return;
     const urgency = (1 - dist / clearance) * (1 - Math.max(0, along) / (look + a.radius));
     if (dist < 1e-3) ship.up(_rel).negate();
@@ -112,6 +113,9 @@ export class DogfighterAI implements ShipController {
   private burst = 0;
   private burstCooldown = 0;
   private readonly breakDir = new Vector3();
+  /** Sideways offset for this fighter's run in, so a group spreads out instead of queueing up. */
+  private readonly flank = new Vector3();
+  private flankSet = false;
   private jinkTimer = 0;
   private lastHull = -1;
   private readonly engageLimit: number;
@@ -155,8 +159,16 @@ export class DogfighterAI implements ShipController {
 
     switch (this.state) {
       case 'engage': {
-        leadPoint(ship.position, target.position, target.velocity, ship.spec.boltSpeed, _lead);
+        leadPoint(ship.position, target.position, target.velocity, ship.spec.boltSpeed + Math.max(0, ship.speed), _lead);
         desired.subVectors(_lead, ship.position).normalize();
+        // Far out, swing in from this fighter's own angle so a group spreads out.
+        if (!this.flankSet) {
+          this.flankSet = true;
+          this.flank.crossVectors(_to, this.rng.unitVector(_tmp)).normalize();
+        }
+        // Only on the long approach: inside firing range they point their guns straight at you.
+        const spread = clamp((dist - 450) / 500, 0, 1) * 0.6;
+        if (spread > 0) desired.addScaledVector(this.flank, spread).normalize();
         c.throttle = dist > 700 ? 1 : dist < 220 ? 0.45 : 0.85;
         c.boost = dist > 1300 && ship.boostEnergy > 40;
         const angle = _fwd.angleTo(desired);
@@ -169,7 +181,7 @@ export class DogfighterAI implements ShipController {
           c.aimPoint = _lead;
           if (ship.gunCooldown <= 0) {
             this.burst--;
-            if (this.burst <= 0) this.burstCooldown = this.rng.range(0.5, 1.2);
+            if (this.burst <= 0) this.burstCooldown = this.rng.range(0.35, 0.8);
           }
         }
         if (dist < 70 || (dist < 160 && _to.dot(target.velocity) < -dist * 60)) this.enter('break');
@@ -223,6 +235,7 @@ export class DogfighterAI implements ShipController {
   protected enter(s: DogState): void {
     this.state = s;
     this.stateTime = 0;
+    if (s === 'engage') this.flankSet = false;
   }
 }
 
@@ -236,6 +249,9 @@ export class BomberAI implements ShipController {
   private readonly runDir = new Vector3();
   private missileUsed = false;
   private extendTime = 3;
+  /** Sideways offset on the approach so bomber pairs split up before their runs. */
+  private readonly flank = new Vector3();
+  private flankSet = false;
 
   constructor(private readonly rng: Rng) {}
 
@@ -265,8 +281,13 @@ export class BomberAI implements ShipController {
 
     switch (this.state) {
       case 'approach': {
-        leadPoint(ship.position, target.position, target.velocity, ship.spec.boltSpeed, _lead);
+        leadPoint(ship.position, target.position, target.velocity, ship.spec.boltSpeed + Math.max(0, ship.speed), _lead);
         desired.subVectors(_lead, ship.position).normalize();
+        if (!this.flankSet) {
+          this.flankSet = true;
+          this.flank.crossVectors(_to, this.rng.unitVector(_tmp)).normalize();
+        }
+        desired.addScaledVector(this.flank, clamp((dist - 1000) / 600, 0, 1) * 0.6).normalize();
         c.throttle = 1;
         c.boost = dist > 1400 && ship.boostEnergy > 50;
         if (dist < 1000 && _fwd.angleTo(desired) < 0.35) {
@@ -276,7 +297,7 @@ export class BomberAI implements ShipController {
         break;
       }
       case 'run': {
-        leadPoint(ship.position, target.position, target.velocity, ship.spec.boltSpeed, _lead);
+        leadPoint(ship.position, target.position, target.velocity, ship.spec.boltSpeed + Math.max(0, ship.speed), _lead);
         desired.subVectors(_lead, ship.position).normalize();
         c.throttle = 0.8;
         const angle = _fwd.angleTo(desired);
@@ -332,6 +353,7 @@ export class BomberAI implements ShipController {
   private enter(s: BomberState): void {
     this.state = s;
     this.stateTime = 0;
+    if (s === 'approach') this.flankSet = false;
   }
 }
 

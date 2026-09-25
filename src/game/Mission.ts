@@ -84,14 +84,14 @@ export class Mission {
       ev.on('shieldBlocked', () => {
         if (!this.hintedShield) {
           this.hintedShield = true;
-          this.say('Halcyon', 'Our guns cannot pierce that shield. Hit the generator pylons!', 'command');
+          this.say('Void Two', 'Their shield is soaking our shots. Swing wide and hit the pylon from outside!', 'friend');
         }
       }),
       ev.on('generatorDestroyed', ({ remaining }) => {
         this.stats.generators++;
         if (remaining > 0) {
           this.say('Void Two', remaining === 1 ? 'One generator left! Finish it!' : `Generator down! ${remaining} to go.`, 'friend');
-          this.showBanner('GENERATOR DESTROYED', `${remaining} remaining`, 'good', 2.5);
+          this.showBanner('GENERATOR DESTROYED', `${remaining} remaining`, 'good', 2);
         }
       }),
       ev.on('escortLaunched', () => {
@@ -172,9 +172,9 @@ export class Mission {
     const w = this.world;
     switch (p.kind) {
       case 'intro':
-        this.objective = 'Weapons free';
-        this.objectiveDetail = 'Enemy fighters jumping in';
-        this.showBanner('VOID WING', 'Tarsus Belt  -  Weapons free', 'info', 4.5);
+        this.objective = 'Stand by';
+        this.objectiveDetail = 'Hegemony fighters inbound';
+        this.showBanner('VOID WING', 'Tarsus Belt', 'info', 4.5);
         this.say('Halcyon', 'Void Wing, Hegemony fighters are jumping in. Weapons free.', 'command', 6);
         break;
       case 'wave': {
@@ -185,8 +185,8 @@ export class Mission {
         this.waveTotal = def.groups.reduce((n, g) => n + g.count, 0);
         this.waveHasBombers = def.groups.some((g) => g.kind === 'maul');
         this.waveKills = 0;
-        this.objective = `Wave ${(p.wave ?? 0) + 1} of ${WAVES.length}: ${def.name}`;
-        this.showBanner(`WAVE ${(p.wave ?? 0) + 1}`, def.name, 'warn', 3);
+        this.objective = `Wave ${(p.wave ?? 0) + 1} of ${WAVES.length}`;
+        this.showBanner(`WAVE ${(p.wave ?? 0) + 1}`, def.name, 'warn', 2.4);
         if (p.wave === 1) this.say('Halcyon', 'Bombers in this wave. They make long strafing runs, so break off their line.', 'command', 6);
         if (p.wave === 2) this.say('Void Two', 'Here they come. Stay close, Void One.', 'friend');
         break;
@@ -202,13 +202,13 @@ export class Mission {
         this.spawnWingmen(false);
         if (next.kind === 'capital') {
           this.objective = 'Stand by';
-          this.objectiveDetail = 'Unknown jump signature';
-          this.showBanner('WARNING', 'Massive jump signature detected', 'warn', 4);
+          this.objectiveDetail = 'Hold position, rearming';
+          this.showBanner('WARNING', 'Massive jump signature', 'warn', 4);
           this.say('Halcyon', 'Something big is jumping in. Hegemony carrier signature!', 'command', 6);
         } else {
-          this.objective = 'Wave cleared';
-          this.objectiveDetail = 'Rearmed: missiles full, hull patched';
-          this.showBanner('WAVE CLEARED', 'Rearming', 'good', 3);
+          this.objective = 'Regroup';
+          this.objectiveDetail = 'Rearmed. Next wave soon';
+          this.showBanner('WAVE CLEARED', 'Missiles rearmed', 'good', 3);
           this.say('Void Three', 'Scope is clear. Nice shooting, lead.', 'friend');
         }
         break;
@@ -217,12 +217,12 @@ export class Mission {
         this.checkpoint = index;
         w.capital.warpIn(w);
         this.objective = 'Destroy the Leviathan';
-        this.showBanner('LEVIATHAN', 'Destroy the 4 shield generators', 'warn', 4);
-        this.say('Halcyon', 'That carrier is shielded. Knock out the four generator pylons!', 'command', 7);
+        this.showBanner('LEVIATHAN', 'Hegemony carrier', 'warn', 4);
+        this.say('Halcyon', 'Its shield bubble stops our guns. Hit the four generator pylons from outside it!', 'command', 8);
         break;
       case 'finale':
-        this.objective = 'Shields down';
-        this.objectiveDetail = 'Leviathan reactor chain reaction';
+        this.objective = 'Get clear';
+        this.objectiveDetail = 'The Leviathan is breaking up';
         this.showBanner('SHIELDS DOWN', 'Reactor chain reaction', 'good', 3);
         this.say('Void Two', "The carrier's reactor is going! Get clear!", 'friend', 6);
         this.onFinaleStart?.();

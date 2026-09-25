@@ -65,7 +65,7 @@ const fragment = /* glsl */ `
     }
     // A slow band of lit cells sweeps the surface so the bubble reads as a volume, not a rim.
     float band = exp(-pow((vP.y - sin(uTime * 0.4) * 0.85) * 5.0, 2.0));
-    float idle = (0.03 + 0.5 * fres + hex * (0.015 + 0.2 * fres) + band * hex * 0.12) * uIdle;
+    float idle = (0.035 + 0.65 * fres + hex * (0.03 + 0.22 * fres) + band * hex * 0.18) * uIdle;
     float a = (idle + ripple * (0.5 + hex * 0.9) + glow * 0.9) * uStrength;
     gl_FragColor = vec4(uColor * a, a);
   }

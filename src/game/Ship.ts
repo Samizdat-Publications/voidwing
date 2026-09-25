@@ -210,6 +210,6 @@ export class Ship extends Entity {
   }
 
   protected onDestroyed(world: World): void {
-    world.effects.explosion(this.position, this.kind === 'maul' ? 2.2 : 1.4, this.velocity);
+    world.effects.explosion(this.position, this.kind === 'maul' ? 2.2 : this.kind === 'player' ? 2.8 : 1.4, this.velocity);
   }
 }

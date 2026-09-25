@@ -213,6 +213,12 @@ export class Projectiles {
     return true;
   }
 
+  /** Visit the head of every live bolt of one kind (FX adds a bloom glow to the player's). */
+  forEachHead(kind: BoltKind, cb: (x: number, y: number, z: number) => void): void {
+    const k = KINDS.indexOf(kind);
+    for (let i = 0; i < this.count; i++) if (this.kind[i] === k) cb(this.px[i], this.py[i], this.pz[i]);
+  }
+
   private writeInstances(cameraPos: Vector3): void {
     this.counts.fill(0);
     for (let i = 0; i < this.count; i++) {

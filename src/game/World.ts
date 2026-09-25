@@ -78,6 +78,17 @@ export class World {
     return DIFFICULTY[this.difficulty];
   }
 
+  private applyDifficultyTo(ship: Ship): void {
+    ship.damageDealt = this.diff.enemyDamage;
+    ship.aimSpread = (ship.kind === 'maul' ? 0.04 : 0.024) / this.diff.enemyAim;
+  }
+
+  /** Change difficulty on the fly (settings screen): enemies already out there adjust too. */
+  setDifficulty(d: Difficulty): void {
+    this.difficulty = d;
+    for (const s of this.ships) if (s.alive && s.team === 'enemy') this.applyDifficultyTo(s);
+  }
+
   entityById(id: number): Entity | null {
     return this.byId.get(id) ?? null;
   }
@@ -131,8 +142,7 @@ export class World {
     _q.setFromUnitVectors(_fwd, dir.clone().normalize());
     ship.quaternion.copy(_q);
     ship.resetMotion(kind === 'maul' ? 70 : 90);
-    ship.damageDealt = this.diff.enemyDamage;
-    ship.aimSpread = (kind === 'maul' ? 0.035 : 0.028) / this.diff.enemyAim;
+    this.applyDifficultyTo(ship);
     ship.controller = kind === 'maul' ? new BomberAI(this.rng) : new DogfighterAI(this.rng);
     this.addShip(ship);
     if (!quiet) this.effects.warpFlash(position, kind === 'maul' ? 22 : 14);

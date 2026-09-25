@@ -7,14 +7,17 @@ import type { PlayerController } from '../game/PlayerController';
 import type { Ship } from '../game/Ship';
 import type { World } from '../game/World';
 
+/** Same palette as styles.css: cyan friends, red enemies only, amber objectives, orange warnings. */
 export const COLORS = {
-  friend: '#52d9ff',
-  foe: '#ff4b5c',
-  objective: '#ffbe3d',
-  white: 'rgba(226,238,255,0.92)',
-  dim: 'rgba(170,200,230,0.45)',
+  friend: '#4fd8ff',
+  foe: '#ff4d5e',
+  bomber: '#ff8a4a',
+  objective: '#ffc24a',
+  warn: '#ff8c3a',
+  white: 'rgba(232,241,255,0.95)',
+  dim: 'rgba(170,190,215,0.6)',
   missile: '#ffffff',
-  lead: '#ffe14d',
+  lead: '#ffe45c',
 };
 
 export interface HudContext {
@@ -52,6 +55,7 @@ const CLASS_LABEL: Record<string, string> = {
 const _v = new Vector3();
 const _v2 = new Vector3();
 const _q = new Quaternion();
+const _proj2: Proj = { x: 0, y: 0, behind: false, onScreen: false, depth: 0 };
 
 const esc = (s: string): string =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
@@ -96,6 +100,7 @@ export class Hud {
   private hitMarker = 0;
   private killMarker = 0;
   private damageFlash = 0;
+  private shieldFlash = 0;
   private readonly damageDir = new Vector3();
   private time = 0;
   private lastCommsKey = '';
@@ -107,10 +112,17 @@ export class Hud {
   private mode: HudMode = 'combat';
   /** Screen rects already taken by labels this frame, so later labels can dodge them. */
   private readonly labelRects: Rect[] = [];
+  /** HUD panel rects (from the DOM) that off-screen arrows slide around. */
+  private panelRects: Rect[] = [];
+  private panelRectsAge = 99;
+  /** True when the target or lead mark sits behind the player's own ship on screen. */
+  overlapShip = false;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'hud hidden', parent);
     this.canvas = el('canvas', 'hud-canvas', this.root);
+    // The canvas sits above the DOM panels so markers stay visible when a ship passes behind one.
+    this.canvas.style.zIndex = '2';
     this.g = this.canvas.getContext('2d')!;
 
     const obj = el('div', 'hud-panel hud-objective', this.root);
@@ -168,6 +180,12 @@ export class Hud {
   show(): void {
     this.root.classList.remove('hidden');
     this.setMode('combat');
+    this.setPaused(false);
+  }
+
+  /** While a menu is open, banners and warnings step back so they never show through it. */
+  setPaused(paused: boolean): void {
+    this.root.classList.toggle('paused', paused);
   }
 
   setMode(mode: HudMode): void {
@@ -197,6 +215,20 @@ export class Hud {
   onPlayerDamaged(from: Vector3 | null): void {
     this.damageFlash = 1;
     if (from) this.damageDir.copy(from);
+  }
+
+  /** A hit the shield absorbed: a cyan edge pulse and a flash on the shield bar. */
+  onShieldHit(): void {
+    this.shieldFlash = 1;
+    const row = this.bars.shield.row;
+    row.classList.remove('hit');
+    void row.offsetWidth;
+    row.classList.add('hit');
+  }
+
+  /** True when whatever hit you is already on screen (then the chevrons would just add clutter). */
+  private damageSourceVisible(camera: PerspectiveCamera): boolean {
+    return this.project(this.damageDir, camera, _proj2).onScreen;
   }
 
   onNoLock(): void {
@@ -235,8 +267,11 @@ export class Hud {
     this.hitMarker = Math.max(0, this.hitMarker - dt * 5);
     this.killMarker = Math.max(0, this.killMarker - dt * 2.2);
     this.damageFlash = Math.max(0, this.damageFlash - dt * 2.5);
+    this.shieldFlash = Math.max(0, this.shieldFlash - dt * 3.5);
     this.noLockFlash = Math.max(0, this.noLockFlash - dt * 2);
     this.updateDom(ctx);
+    this.panelRectsAge += dt;
+    if (this.panelRectsAge > 0.5) this.refreshPanelRects();
     this.draw(ctx);
   }
 
@@ -316,9 +351,12 @@ export class Hud {
     if (player.alive) {
       if (world.missiles.incomingOn(player) > 0) warns.push(['missile', 'MISSILE INCOMING - BREAK HARD']);
       if (player.hullFraction < 0.3) warns.push(['hull', 'HULL CRITICAL']);
+      else if (player.shield < 1 && player.maxShield > 0) warns.push(['hull', 'SHIELDS DOWN']);
       if (controller.outOfBounds) warns.push(['bounds', 'RETURN TO COMBAT AREA']);
-      if (this.time - this.lastShieldBlock < 1.6) warns.push(['info', 'SHOTS BLOCKED BY SHIELD - FLANK THE GENERATOR']);
+      if (this.time - this.lastShieldBlock < 1.6 && !mission.banner) warns.push(['info', 'SHOTS BLOCKED BY SHIELD - FLANK THE GENERATOR']);
     }
+    // Never more than two at once, most urgent first.
+    warns.length = Math.min(warns.length, 2);
     const wKey = warns.map((w) => w[1]).join('|');
     if (wKey !== this.lastWarn) {
       this.lastWarn = wKey;
@@ -328,26 +366,51 @@ export class Hud {
 
   private draw(ctx: HudContext): void {
     const g = this.g;
-    const { camera, player, controller, world } = ctx;
+    const { camera, player, controller, world, mission } = ctx;
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     g.clearRect(0, 0, this.w, this.h);
     if (!player.alive || this.mode !== 'combat') return;
     this.labelRects.length = 0;
+    // World labels never print through the banner while it is up.
+    if (mission.banner) this.labelRects.push({ x: this.w * 0.2, y: this.h * 0.17 - 6, w: this.w * 0.6, h: 80 });
     this.drawLowHull(player);
+    if (this.shieldFlash > 0) {
+      // Cyan pulse around the screen edge: your shield just took a hit.
+      const r0 = Math.min(this.w, this.h) * 0.46, r1 = Math.hypot(this.w, this.h) * 0.56;
+      const grad = g.createRadialGradient(this.w / 2, this.h / 2, r0, this.w / 2, this.h / 2, r1);
+      grad.addColorStop(0, 'rgba(79,216,255,0)');
+      grad.addColorStop(1, `rgba(79,216,255,${this.shieldFlash * 0.28})`);
+      g.fillStyle = grad;
+      g.fillRect(0, 0, this.w, this.h);
+    }
     g.lineCap = 'round';
     g.lineJoin = 'round';
     const pr: Proj = { x: 0, y: 0, behind: false, onScreen: false, depth: 0 };
 
-    // Contacts: full brackets up close, small pips far away, arrows off screen.
+    // Contacts: brackets on screen (tiny pips only beyond 1.6 km), arrows at the screen edge.
     const target = player.target;
+    const locking = !!target && target.alive && (controller.inLockCone || controller.lockProgress > 0);
+    const missileReady = player.missiles > 0 && player.missileCooldown <= 0;
+    const lockTag = !locking || !missileReady ? '' : controller.locked ? 'LOCK' : 'LOCKING';
     const contacts: Entity[] = [];
     // The current target goes first so its label claims its spot before any other label.
     if (target && target.alive) contacts.push(target);
     for (const s of world.ships) if (s.alive && s !== player && s !== target) contacts.push(s);
     for (const gen of world.capital.generators) if (gen.alive && gen !== target && world.capital.state !== 'hidden') contacts.push(gen);
     const focal = (this.h / 2) / Math.tan((camera.fov * Math.PI) / 360);
-    g.font = '600 11px "Chakra Petch", "Rajdhani", system-ui, sans-serif';
+    g.font = '600 11px "Chakra Petch", system-ui, sans-serif';
     g.textAlign = 'center';
+    for (const e of contacts) {
+      this.project(e.position, camera, pr);
+      if (!pr.onScreen) continue;
+      const s = clamp((e.radius / Math.max(1, pr.depth)) * focal * 1.4, 7, e.objective ? 46 : 90);
+      this.labelRects.push({ x: pr.x - s, y: pr.y - s, w: s * 2, h: s * 2 });
+    }
+    // The player's ship on screen: labels and turret markers keep off it; it fades when a target is behind it.
+    this.project(player.position, camera, pr);
+    const shipRect = { x: pr.x - 82, y: pr.y - 48, w: 164, h: 74 };
+    this.labelRects.push(shipRect);
+    let overlap = false;
     for (const e of contacts) {
       const d = e.position.distanceTo(player.position);
       this.project(e.position, camera, pr);
@@ -355,9 +418,12 @@ export class Hud {
       const color = friend ? COLORS.friend : e.objective ? COLORS.objective : COLORS.foe;
       const isTarget = e === target;
       if (pr.onScreen) {
-        const size = clamp((e.radius / Math.max(1, pr.depth)) * focal * 1.4, isTarget ? 16 : 9, 90);
-        const far = !isTarget && !e.objective && d > 950;
-        if (far) {
+        // Generator markers stay compact even when you are right on top of one.
+        const size = clamp((e.radius / Math.max(1, pr.depth)) * focal * 1.4, isTarget ? 16 : d > 600 ? 7 : 9, e.objective ? 46 : 90);
+        const underBanner = !!mission.banner && pr.y > this.h * 0.17 - 10 && pr.y < this.h * 0.17 + 80 && Math.abs(pr.x - this.w / 2) < this.w * 0.3;
+        g.globalAlpha = underBanner ? 0.35 : 1;
+        if (pr.x > shipRect.x - size && pr.x < shipRect.x + shipRect.w + size && pr.y > shipRect.y - size && pr.y < shipRect.y + shipRect.h + size) overlap = true;
+        if (!isTarget && !e.objective && d > 1600) {
           g.fillStyle = color;
           g.globalAlpha = 0.85;
           g.beginPath();
@@ -370,27 +436,91 @@ export class Hud {
           }
           g.fill();
           g.globalAlpha = 1;
-        } else if (!(isTarget && !e.objective && (controller.inLockCone || controller.lockProgress > 0))) {
-          this.drawBracket(pr.x, pr.y, size, e.kind === 'maul' ? '#ff8a4a' : color, isTarget, friend, e.objective, e.kind === 'maul');
+          continue;
         }
+        if (underBanner) {
+          this.drawBracket(pr.x, pr.y, size, color, isTarget, friend, e.objective, e.kind === 'maul');
+          g.globalAlpha = 1;
+          continue;
+        }
+        g.globalAlpha = 1;
         if (isTarget) {
-          // Range (and BOMBER for Mauls) under the lock ring; the rest lives in the target panel.
-          const text = e.kind === 'maul' ? `BOMBER  ${Math.round(d)} m` : `${Math.round(d)} m`;
-          const ly = this.placeLabel(pr.x - 40, pr.y + this.lockRadius(size) + 4, 80, 14);
-          this.labelText(text, pr.x, ly + 11, e.kind === 'maul' ? '#ff8a4a' : color, 'center', 0.95);
-        } else if (e.objective) {
-          const name = e.name.replace('Generator', 'GEN').toUpperCase();
-          const ly = this.placeLabel(pr.x - 24, Math.max(4, pr.y - size - 19), 48, 14);
-          this.labelText(name, pr.x, ly + 11, color, 'center', 0.9);
-          this.drawMiniBars(pr.x, pr.y + size + 6, e, color);
-        } else if (friend && d < 400 && Math.hypot(pr.x - this.w / 2, pr.y - this.h / 2) > 110) {
-          // Wingman names stay out of the sight area.
-          const ly = this.placeLabel(pr.x - 32, Math.max(4, pr.y - size - 18), 64, 14);
-          this.labelText(e.name.toUpperCase(), pr.x, ly + 11, color, 'center', 0.75);
+          // Lock state lives on the target's own brackets: they close in while locking and turn
+          // solid when locked. No extra rings stacked on the aim point.
+          const p = locking ? controller.lockProgress : 1;
+          const ss = size + 5 + (locking ? (1 - p) * 22 : 0);
+          const ready = missileReady && controller.locked;
+          g.globalAlpha = locking && !controller.locked ? 0.55 + 0.45 * p : 1;
+          this.drawBracket(pr.x, pr.y, ss, color, true, false, e.objective, e.kind === 'maul', ready ? 3.4 : 2.2);
+          g.globalAlpha = 1;
+          // One tag per target, pinned to the bracket's top-right corner: lock state, type and range
+          // together, so it can never read as belonging to a neighbouring ship.
+          const blocked = e.objective && world.capital.shieldActive && world.capital.segmentShieldT(player.position, e.position) >= 0;
+          const parts: string[] = [];
+          if (lockTag) parts.push(lockTag);
+          if (blocked) parts.push('SHIELD IN THE WAY');
+          else if (e.kind === 'maul') parts.push('BOMBER');
+          parts.push(`${Math.round(d)} m`);
+          const text = parts.join('  ');
+          g.font = '700 11px "Chakra Petch", system-ui, sans-serif';
+          const tw = g.measureText(text).width + 12;
+          const cxr = pr.x + ss, cyr = pr.y - ss;
+          const tx = Math.min(cxr + 2, this.w - tw - 6), ty = Math.max(4, cyr - 17);
+          if (lockTag === 'LOCK') {
+            g.strokeStyle = color;
+            g.lineWidth = 1.2;
+            g.strokeRect(pr.x - ss, pr.y - ss, ss * 2, ss * 2);
+          }
+          const fill = lockTag === 'LOCK' ? COLORS.foe : blocked ? 'rgba(255,140,58,0.92)' : 'rgba(6,10,19,0.78)';
+          g.fillStyle = fill;
+          g.fillRect(tx, ty, tw, 16);
+          g.strokeStyle = lockTag === 'LOCK' ? COLORS.foe : color;
+          g.lineWidth = 1;
+          g.strokeRect(tx + 0.5, ty + 0.5, tw - 1, 15);
+          g.fillStyle = lockTag === 'LOCK' || blocked ? '#fff' : color === COLORS.objective ? COLORS.objective : COLORS.white;
+          g.textAlign = 'left';
+          g.fillText(text, tx + 6, ty + 12);
+          g.textAlign = 'center';
+          g.font = '600 11px "Chakra Petch", system-ui, sans-serif';
+          this.labelRects.push({ x: tx, y: ty, w: tw, h: 16 });
+        } else {
+          if (!friend && !e.objective) g.globalAlpha = 0.85;
+          this.drawBracket(pr.x, pr.y, size, color, false, friend, e.objective, e.kind === 'maul', friend || e.objective ? undefined : 1.4);
+          g.globalAlpha = 1;
+          if (e.objective) {
+            const name = e.name.replace('Generator', 'GEN').toUpperCase();
+            const ly = this.placeLabel(pr.x - 24, Math.max(4, pr.y - size - 19), 48, 14);
+            this.labelText(name, pr.x, ly + 11, color, 'center', 0.9);
+            this.drawMiniBars(pr.x, pr.y + size + 6, e, color);
+          } else if (friend && d < 400 && Math.hypot(pr.x - this.w / 2, pr.y - this.h / 2) > 110) {
+            // Wingman names stay out of the sight area.
+            const ly = this.placeLabel(pr.x - 32, Math.max(4, pr.y - Math.min(size, 22) - 30), 64, 14);
+            this.labelText(e.name.toUpperCase(), pr.x, ly + 11, color, 'center', 0.8);
+          }
         }
       } else if (!friend && (isTarget || e.objective || d < 2600)) {
         this.drawEdgeArrow(pr, color, isTarget, isTarget ? `${Math.round(d)} m` : '');
       }
+    }
+
+    this.overlapShip = overlap;
+
+    // Out of bounds: an amber arrow toward the combat area.
+    if (controller.outOfBounds) {
+      _v.copy(player.position).negate().normalize().multiplyScalar(600).add(player.position);
+      this.project(_v, camera, pr);
+      if (pr.onScreen) {
+        g.strokeStyle = COLORS.objective;
+        g.lineWidth = 2.5;
+        g.beginPath();
+        g.moveTo(pr.x, pr.y - 12);
+        g.lineTo(pr.x + 12, pr.y);
+        g.lineTo(pr.x, pr.y + 12);
+        g.lineTo(pr.x - 12, pr.y);
+        g.closePath();
+        g.stroke();
+        this.labelText('COMBAT AREA', pr.x, pr.y + 28, COLORS.objective, 'center', 1);
+      } else this.drawEdgeArrow(pr, COLORS.objective, true, 'COMBAT AREA');
     }
 
     // Carrier turrets tracking the player: small red squares, the nearest labelled FLAK.
@@ -402,6 +532,7 @@ export class Hud {
         const d = t.position.distanceTo(player.position);
         this.project(t.position, camera, pr);
         if (!pr.onScreen) continue;
+        if (pr.x > shipRect.x && pr.x < shipRect.x + shipRect.w && pr.y > shipRect.y && pr.y < shipRect.y + shipRect.h) continue;
         g.strokeStyle = COLORS.foe;
         g.lineWidth = 1.6;
         g.strokeRect(pr.x - 5, pr.y - 5, 10, 10);
@@ -417,14 +548,14 @@ export class Hud {
       }
     }
 
-    // Incoming enemy missiles: a pulsing ring on screen, and a threat chevron around the sight
+    // Incoming enemy missiles: a pulsing triangle on screen, and a threat chevron around the sight
     // pointing at every missile that is tracking the player.
     for (const m of world.missiles.list) {
       if (!m.alive || m.team === 'player') continue;
       this.project(m.position, camera, pr);
       if (pr.onScreen) {
         const r = 8 + Math.sin(this.time * 20) * 2;
-        g.strokeStyle = '#ff3b4a';
+        g.strokeStyle = COLORS.warn;
         g.lineWidth = 2;
         g.beginPath();
         g.moveTo(pr.x, pr.y - r);
@@ -433,75 +564,40 @@ export class Hud {
         g.closePath();
         g.stroke();
       }
-      if (m.target === player) this.drawThreat(m.position, player, 136, '#ff3b4a', 'MISSILE');
+      if (m.target === player) this.drawThreat(m.position, player, 136, COLORS.warn, 'MISSILE');
     }
 
-    // Lead pip (where to shoot, yellow) and missile lock ring (drawn outside the bracket).
-    if (target && target.alive) {
+    // Lead: a yellow diamond where to shoot, tied to the target when it sits ahead of it.
+    if (target && target.alive && controller.hasLead) {
       this.project(target.position, camera, pr);
       const tx = pr.x, ty = pr.y, tOn = pr.onScreen;
-      const tSize = clamp((target.radius / Math.max(1, pr.depth)) * focal * 1.4, 16, 90);
-      if (tOn && (controller.inLockCone || controller.lockProgress > 0)) {
-        // Lock: four arcs spin and close in on the target, then a solid ring with ticks.
-        const p = controller.lockProgress;
-        const rLock = this.lockRadius(tSize);
-        const r = rLock + (1 - p) * 26;
-        // Grey and dashed while missiles reload or are empty: locked, but you cannot fire yet.
-        const ready = player.missiles > 0 && player.missileCooldown <= 0;
-        g.strokeStyle = !ready ? 'rgba(200,210,230,0.5)' : controller.locked ? COLORS.foe : 'rgba(255,90,100,0.75)';
-        g.lineWidth = controller.locked ? 2.5 : 1.5;
-        g.save();
-        if (!ready) g.setLineDash([5, 6]);
-        g.translate(tx, ty);
-        g.beginPath();
-        if (controller.locked) {
-          g.arc(0, 0, r, 0, Math.PI * 2);
-          for (let i = 0; i < 4; i++) {
-            const a = (i * Math.PI) / 2 + Math.PI / 4;
-            g.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-            g.lineTo(Math.cos(a) * (r - 7), Math.sin(a) * (r - 7));
-          }
-        } else {
-          g.rotate(this.time * 3);
-          for (let i = 0; i < 4; i++) {
-            const a0 = (i * Math.PI) / 2 + 0.25;
-            g.moveTo(Math.cos(a0) * r, Math.sin(a0) * r);
-            g.arc(0, 0, r, a0, a0 + Math.PI / 2 - 0.5);
-          }
-        }
-        g.stroke();
-        g.restore();
-      }
-      if (controller.hasLead && tOn) {
-        this.project(controller.lead, camera, pr);
-        const off = Math.hypot(pr.x - tx, pr.y - ty);
-        if (pr.onScreen) {
-          // Where to shoot: a yellow pip with a dark outline, tied to the target by a thin line.
-          if (off > 12) {
-            g.strokeStyle = COLORS.lead;
-            g.globalAlpha = 0.45;
-            g.lineWidth = 1.2;
-            g.beginPath();
-            g.moveTo(tx, ty);
-            g.lineTo(pr.x, pr.y);
-            g.stroke();
-          }
-          g.globalAlpha = 1;
-          g.lineWidth = 5;
-          g.strokeStyle = 'rgba(0,0,0,0.55)';
+      this.project(controller.lead, camera, pr);
+      const off = Math.hypot(pr.x - tx, pr.y - ty);
+      if (tOn && pr.onScreen) {
+        if (pr.x > shipRect.x && pr.x < shipRect.x + shipRect.w && pr.y > shipRect.y && pr.y < shipRect.y + shipRect.h) this.overlapShip = true;
+        if (off > 12) {
+          g.strokeStyle = COLORS.lead;
+          g.globalAlpha = 0.5;
+          g.lineWidth = 1.2;
           g.beginPath();
-          g.arc(pr.x, pr.y, 10.5, 0, Math.PI * 2);
+          g.moveTo(tx, ty);
+          g.lineTo(pr.x, pr.y);
           g.stroke();
-          g.lineWidth = 2.5;
+          g.globalAlpha = 1;
+        }
+        g.beginPath();
+        g.arc(pr.x, pr.y, off > 12 ? 4.5 : 6, 0, Math.PI * 2);
+        g.lineWidth = 3;
+        g.strokeStyle = 'rgba(0,0,0,0.65)';
+        g.stroke();
+        if (off > 12) {
+          g.fillStyle = COLORS.lead;
+          g.fill();
+        } else {
+          // On the target: a hollow ring so the ship itself stays visible.
+          g.lineWidth = 1.8;
           g.strokeStyle = COLORS.lead;
           g.stroke();
-          // The centre dot only when the pip is off the target, so it never hides the ship.
-          if (off > 12) {
-            g.fillStyle = COLORS.lead;
-            g.beginPath();
-            g.arc(pr.x, pr.y, 3.6, 0, Math.PI * 2);
-            g.fill();
-          }
         }
       }
     }
@@ -513,65 +609,90 @@ export class Hud {
     this.drawCrosshair(cx, cy);
     this.project(_v2.copy(controller.aimDir).multiplyScalar(PLAYER.convergence).add(player.position), camera, pr);
     const adx = pr.x - cx, ady = pr.y - cy;
-    // The steering dot only shows while the ship is still turning toward it.
-    if (!pr.behind && Math.hypot(adx, ady) > 6) {
-      const dx = adx, dy = ady;
-      const dist = Math.hypot(dx, dy);
-      g.strokeStyle = COLORS.friend;
-      g.fillStyle = COLORS.friend;
-      g.globalAlpha = 0.9;
-      g.lineWidth = 1.5;
+    // Steering ring: where the ship is turning to. It sits inside the gun sight when on course.
+    if (!pr.behind) {
+      const dist = Math.hypot(adx, ady);
+      const onLead = !!target && target.alive && controller.hasLead && this.project(controller.lead, camera, _proj2).onScreen && Math.hypot(_proj2.x - pr.x, _proj2.y - pr.y) < 16;
+      const ringR = dist > 10 && !onLead ? 9 : 0;
+      g.strokeStyle = 'rgba(0,0,0,0.55)';
+      g.lineWidth = 4;
+      g.fillStyle = COLORS.white;
+      g.globalAlpha = 0.95;
+      if (ringR > 0) {
+        g.beginPath();
+        g.arc(pr.x, pr.y, ringR, 0, Math.PI * 2);
+        g.stroke();
+        g.strokeStyle = COLORS.white;
+        g.lineWidth = 1.6;
+        g.beginPath();
+        g.arc(pr.x, pr.y, ringR, 0, Math.PI * 2);
+        g.stroke();
+      }
       g.beginPath();
-      g.arc(pr.x, pr.y, 2.6, 0, Math.PI * 2);
+      g.arc(pr.x, pr.y, 1.8, 0, Math.PI * 2);
       g.fill();
-      if (dist > 30) {
+      g.lineWidth = 1.5;
+      if (dist > 34) {
         g.globalAlpha = 0.3;
         g.beginPath();
-        g.moveTo(cx + (dx / dist) * 26, cy + (dy / dist) * 26);
-        g.lineTo(pr.x - (dx / dist) * 6, pr.y - (dy / dist) * 6);
+        g.moveTo(cx + (adx / dist) * 28, cy + (ady / dist) * 28);
+        g.lineTo(pr.x - (adx / dist) * 6, pr.y - (ady / dist) * 6);
         g.stroke();
       }
       g.globalAlpha = 1;
     }
 
-    // Damage direction: a red glow on the screen edge facing the hit.
-    if (this.damageFlash > 0) {
+    // Damage direction: an orange glow on the screen edge facing the hit and an arc around the sight.
+    if (this.damageFlash > 0 && !this.damageSourceVisible(camera)) {
       _q.copy(player.quaternion).invert();
       _v.copy(this.damageDir).sub(player.position).applyQuaternion(_q);
       const ang = Math.atan2(-_v.y, _v.x);
-      // Soft red glow pooled against the screen edge on the side the hit came from.
       const ex = this.w / 2 + Math.cos(ang) * this.w * 0.5;
       const ey = this.h / 2 + Math.sin(ang) * this.h * 0.5;
       const rad = Math.min(this.w, this.h) * 0.5;
       const grad = g.createRadialGradient(ex, ey, 0, ex, ey, rad);
-      grad.addColorStop(0, `rgba(255,40,50,${this.damageFlash * 0.55})`);
-      grad.addColorStop(1, 'rgba(255,40,50,0)');
+      grad.addColorStop(0, `rgba(255,110,40,${this.damageFlash * 0.5})`);
+      grad.addColorStop(1, 'rgba(255,110,40,0)');
       g.fillStyle = grad;
       g.fillRect(ex - rad, ey - rad, rad * 2, rad * 2);
-      // A red arc on a ring around the sight points at whoever hit you.
-      // Orange, well outside the reticle, so it never reads as part of the lock marks.
-      g.strokeStyle = `rgba(255,170,80,${Math.min(1, this.damageFlash * 1.4)})`;
-      g.lineWidth = 5;
+      // Two chevrons on a ring around your own ship point at whoever hit you.
+      this.project(player.position, camera, pr);
+      const a = Math.min(1, this.damageFlash * 1.5);
+      g.save();
+      g.translate(pr.x, pr.y - 8);
+      g.rotate(ang);
+      g.strokeStyle = `rgba(255,150,60,${a})`;
+      g.lineWidth = 4;
       g.beginPath();
-      g.arc(this.w / 2, this.h / 2, 150, ang - 0.25, ang + 0.25);
+      for (const r of [96, 112]) {
+        g.moveTo(r - 8, -11);
+        g.lineTo(r, 0);
+        g.lineTo(r - 8, 11);
+      }
       g.stroke();
+      g.restore();
     }
 
     this.drawRadar(ctx);
   }
 
-  /** Radius of the lock ring around a target bracket of half-size s. */
-  private lockRadius(s: number): number {
-    return Math.min(Math.max(s * 1.3, 28), 46);
-  }
-
   /** Reserve a label rect, sliding it down past any label already placed this frame. */
   private placeLabel(x: number, y: number, w: number, h: number): number {
+    const free = (ry: number) => !this.labelRects.some((r) => x < r.x + r.w && x + w > r.x && ry < r.y + r.h && ry + h > r.y);
     let ry = Math.max(4, y);
-    for (let tries = 0; tries < 5; tries++) {
-      const hit = this.labelRects.find((r) => x < r.x + r.w && x + w > r.x && ry < r.y + r.h && ry + h > r.y);
-      if (!hit) break;
-      ry = hit.y + hit.h + 2;
+    if (!free(ry)) {
+      // Try stepping up, then down, in label-height steps.
+      let found = false;
+      for (let k = 1; k <= 6 && !found; k++) {
+        for (const dir of [-1, 1]) {
+          const cand = y + dir * k * (h + 2);
+          if (cand > 4 && cand < this.h - h - 4 && free(cand)) {
+            ry = cand;
+            found = true;
+            break;
+          }
+        }
+      }
     }
     this.labelRects.push({ x, y: ry, w, h });
     return ry;
@@ -579,6 +700,10 @@ export class Hud {
 
   private labelText(text: string, x: number, y: number, color: string, align: CanvasTextAlign, alpha: number): void {
     const g = this.g;
+    const tw = g.measureText(text).width;
+    if (align === 'center') x = clamp(x, tw / 2 + 6, this.w - tw / 2 - 6);
+    else if (align === 'left') x = clamp(x, 6, this.w - tw - 6);
+    y = clamp(y, 14, this.h - 6);
     g.textAlign = align;
     g.globalAlpha = alpha;
     g.lineWidth = 3;
@@ -631,35 +756,34 @@ export class Hud {
     g.fill();
     g.restore();
     g.globalAlpha = 1;
-    g.font = '700 11px "Chakra Petch", system-ui, sans-serif';
-    const lx = this.w / 2 + Math.cos(ang) * (radius + 26), ly = this.h / 2 + Math.sin(ang) * (radius + 26) + 4;
+    g.font = '700 13px "Chakra Petch", system-ui, sans-serif';
+    const lx = this.w / 2 + Math.cos(ang) * (radius + 30), ly = this.h / 2 + Math.sin(ang) * (radius + 30) + 4;
     this.labelText(behind ? `${label} BEHIND` : label, lx, ly, color, 'center', pulse);
     g.font = '600 11px "Chakra Petch", "Rajdhani", system-ui, sans-serif';
   }
 
   private drawCrosshair(x: number, y: number): void {
     const g = this.g;
-    // Hollow gun sight: four ticks and a faint ring, clear in the middle so the target shows through.
+    // Gun sight: four ticks with a dark outline and a clear middle so the target shows through.
+    const ticks = () => {
+      g.beginPath();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        g.moveTo(x + dx * 14, y + dy * 14);
+        g.lineTo(x + dx * 25, y + dy * 25);
+      }
+      g.stroke();
+    };
+    g.strokeStyle = 'rgba(0,0,0,0.5)';
+    g.lineWidth = 4.5;
+    ticks();
     g.strokeStyle = COLORS.white;
-    g.globalAlpha = 0.22;
-    g.lineWidth = 1;
-    g.beginPath();
-    g.arc(x, y, 20, 0, Math.PI * 2);
-    g.stroke();
-    g.globalAlpha = 0.95;
     g.lineWidth = 2;
-    g.beginPath();
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      g.moveTo(x + dx * 16, y + dy * 16);
-      g.lineTo(x + dx * 27, y + dy * 27);
-    }
-    g.stroke();
-    g.globalAlpha = 1;
+    ticks();
     if (this.hitMarker > 0 || this.killMarker > 0) {
       const k = Math.max(this.hitMarker, this.killMarker);
-      g.strokeStyle = this.killMarker > 0 ? `rgba(255,80,90,${this.killMarker})` : `rgba(255,255,255,${k})`;
+      g.strokeStyle = this.killMarker > 0 ? `rgba(255,77,94,${this.killMarker})` : `rgba(255,255,255,${k})`;
       g.lineWidth = this.killMarker > 0 ? 3 : 2;
-      const r0 = 8, r1 = this.killMarker > 0 ? 20 : 15;
+      const r0 = 7, r1 = this.killMarker > 0 ? 18 : 13;
       g.beginPath();
       for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
         g.moveTo(x + dx * r0, y + dy * r0);
@@ -669,10 +793,10 @@ export class Hud {
     }
   }
 
-  private drawBracket(x: number, y: number, s: number, color: string, isTarget: boolean, friend: boolean, objective: boolean, heavy = false): void {
+  private drawBracket(x: number, y: number, s: number, color: string, isTarget: boolean, friend: boolean, objective: boolean, heavy = false, width?: number): void {
     const g = this.g;
     g.strokeStyle = color;
-    g.lineWidth = isTarget ? 2.2 : 1.4;
+    g.lineWidth = width ?? (isTarget ? 2.2 : 1.4);
     if (objective) {
       g.beginPath();
       g.moveTo(x, y - s);
@@ -684,13 +808,18 @@ export class Hud {
       return;
     }
     if (friend) {
-      // Small and faint near the sight so wingmen never crowd the aim point.
+      // Friendly: a cyan caret over the ship (no circle, so it never looks like the steering ring).
       const nearSight = Math.hypot(x - this.w / 2, y - this.h / 2) < 110;
-      g.globalAlpha = nearSight ? 0.4 : 0.85;
+      const a = g.globalAlpha;
+      g.globalAlpha = a * (nearSight ? 0.5 : 0.9);
+      const top = y - Math.min(s, 22) - 6;
+      g.lineWidth = 2;
       g.beginPath();
-      g.arc(x, y, Math.min(s * 0.8, 20), 0, Math.PI * 2);
+      g.moveTo(x - 7, top - 7);
+      g.lineTo(x, top);
+      g.lineTo(x + 7, top - 7);
       g.stroke();
-      g.globalAlpha = 1;
+      g.globalAlpha = a;
       return;
     }
     const c = Math.max(4, s * 0.4);
@@ -736,19 +865,12 @@ export class Hud {
       dy = Math.min(dy, this.h * 0.1);
     }
     const ang = Math.atan2(dy, dx);
-    // Ride an ellipse inside the screen edge; it is squashed vertically so arrows stay clear
-    // of the corner panels.
-    const rx = this.w / 2 - 70, ry = this.h / 2 - 110;
-    const t = 1 / Math.sqrt((Math.cos(ang) / rx) ** 2 + (Math.sin(ang) / ry) ** 2);
-    let x = cx + Math.cos(ang) * t, y = cy - 10 + Math.sin(ang) * t;
-    // Never park an arrow on the radar.
-    const rad = this.radarGeom();
-    const rdx = x - rad.cx, rdy = y - rad.cy, rd = Math.hypot(rdx, rdy);
-    if (rd < rad.R + 20) {
-      x = rad.cx + (rdx / Math.max(rd, 1)) * (rad.R + 20);
-      y = rad.cy + (rdy / Math.max(rd, 1)) * (rad.R + 20);
-      if (rd < 1) x = rad.cx - rad.R - 20;
-    }
+    // At the true screen edge (34 px in), then slid along the edge off any HUD panel.
+    const m = 34;
+    const hw = this.w / 2 - m, hh = this.h / 2 - m;
+    const t = Math.min(hw / Math.max(1e-6, Math.abs(Math.cos(ang))), hh / Math.max(1e-6, Math.abs(Math.sin(ang))));
+    const pt = this.dodgePanels(cx + Math.cos(ang) * t, cy + Math.sin(ang) * t, m);
+    const x = pt.x, y = pt.y;
     const s = big ? 20 : 14;
     g.save();
     g.translate(x, y);
@@ -769,14 +891,42 @@ export class Hud {
     g.globalAlpha = 1;
     if (label) {
       g.font = '700 12px "Chakra Petch", system-ui, sans-serif';
-      g.textAlign = 'center';
-      const lx = x - Math.cos(ang) * 30, ly = y - Math.sin(ang) * 30 + 4;
-      g.lineWidth = 3;
-      g.strokeStyle = 'rgba(0,0,0,0.75)';
-      g.strokeText(label, lx, ly);
-      g.fillStyle = color;
-      g.fillText(label, lx, ly);
+      this.labelText(label, x - Math.cos(ang) * 32, y - Math.sin(ang) * 32 + 4, color, 'center', 1);
+      g.font = '600 11px "Chakra Petch", system-ui, sans-serif';
     }
+  }
+
+  /** Read the HUD panels' screen rects (plus the radar) for arrow placement. */
+  private refreshPanelRects(): void {
+    this.panelRectsAge = 0;
+    const base = this.root.getBoundingClientRect();
+    const rects: Rect[] = [];
+    for (const el of this.root.querySelectorAll<HTMLElement>('.hud-objective, .hud-comms, .hud-target, .hud-status, .hud-weapons')) {
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) continue;
+      rects.push({ x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height });
+    }
+    const rad = this.radarGeom();
+    rects.push({ x: rad.cx - rad.R, y: rad.cy - rad.R, w: rad.R * 2, h: rad.R * 2 });
+    this.panelRects = rects;
+  }
+
+  /** Slide an edge point along its edge until it clears every HUD panel. */
+  private dodgePanels(x: number, y: number, m: number): { x: number; y: number } {
+    const pad = 14;
+    const sideEdge = x <= m + 1 || x >= this.w - m - 1;
+    for (let pass = 0; pass < 3; pass++) {
+      const hit = this.panelRects.find((r) => x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad);
+      if (!hit) break;
+      if (sideEdge) {
+        const up = hit.y - pad, down = hit.y + hit.h + pad;
+        y = (Math.abs(y - up) < Math.abs(y - down) && up > m) || down > this.h - m ? up : down;
+      } else {
+        const left = hit.x - pad, right = hit.x + hit.w + pad;
+        x = (Math.abs(x - left) < Math.abs(x - right) && left > m) || right > this.w - m ? left : right;
+      }
+    }
+    return { x: clamp(x, m, this.w - m), y: clamp(y, m, this.h - m) };
   }
 
   /** Bottom right, above the weapons panel, so it never sits on the ship. */
