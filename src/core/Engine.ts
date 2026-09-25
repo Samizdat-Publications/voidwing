@@ -22,6 +22,9 @@ export class Engine {
     this.renderer.toneMapping = ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.domElement.id = 'game-canvas';
+    // Shader diagnostics only with ?debug: ANGLE's D3D compiler reports harmless constant-folding
+    // notes for three's built-in chunks, which three would print as console warnings.
+    this.renderer.debug.checkShaderErrors = new URLSearchParams(location.search).has('debug');
     container.appendChild(this.renderer.domElement);
     this.camera = new PerspectiveCamera(72, 1, 1, 60000);
     this.resize();

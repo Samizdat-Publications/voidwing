@@ -235,7 +235,9 @@ export class Hud {
     // Missile status: reload cooldown, lock progress, or ready.
     const cd = Math.max(0, player.missileCooldown);
     let mode: string, frac: number;
-    if (player.missiles <= 0) [mode, frac] = ['EMPTY', 0];
+    if (!player.alive) [mode, frac] = ['OFFLINE', 0];
+    else if (this.noLockFlash > 0) [mode, frac] = ['NO LOCK', 0];
+    else if (player.missiles <= 0) [mode, frac] = ['EMPTY', 0];
     else if (cd > 0) [mode, frac] = ['RELOAD', 1 - cd / PLAYER.missileCooldown];
     else if (controller.locked) [mode, frac] = ['LOCKED', 1];
     else if (controller.lockProgress > 0) [mode, frac] = ['LOCKING', controller.lockProgress];
@@ -249,7 +251,7 @@ export class Hud {
     this.set('thr', Math.round(player.throttle * 100), (v) => (this.throttleFill.style.width = `${v}%`));
 
     const t = player.target;
-    this.set('tpVis', t ? 1 : 0, (v) => this.targetPanel.classList.toggle('hidden', v === 0));
+    this.set('tpVis', t && player.alive ? 1 : 0, (v) => this.targetPanel.classList.toggle('hidden', v === 0));
     if (t) {
       this.set('tpName', t.name, (v) => (this.targetName.textContent = String(v)));
       this.set('tpTeam', t.objective ? 'obj' : 'foe', (v) => this.targetPanel.setAttribute('data-kind', String(v)));
@@ -285,7 +287,6 @@ export class Hud {
     if (world.missiles.incomingOn(player) > 0) warns.push('MISSILE INCOMING');
     if (player.hullFraction < 0.3 && player.alive) warns.push('HULL CRITICAL');
     if (controller.outOfBounds) warns.push('RETURN TO COMBAT AREA');
-    if (this.noLockFlash > 0) warns.push('NO MISSILE LOCK');
     if (this.time - this.lastShieldBlock < 1.6) warns.push('SHOTS BLOCKED BY SHIELD - FLANK THE GENERATOR');
     const wKey = warns.join('|');
     if (wKey !== this.lastWarn) {
@@ -475,19 +476,22 @@ export class Hud {
 
   private drawCrosshair(x: number, y: number): void {
     const g = this.g;
+    // Hollow gun sight: four ticks and a faint ring, clear in the middle so the target shows through.
     g.strokeStyle = COLORS.white;
-    g.lineWidth = 1.6;
+    g.globalAlpha = 0.3;
+    g.lineWidth = 1;
     g.beginPath();
-    g.arc(x, y, 13, 0, Math.PI * 2);
+    g.arc(x, y, 15, 0, Math.PI * 2);
     g.stroke();
+    g.globalAlpha = 0.95;
+    g.lineWidth = 2;
     g.beginPath();
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      g.moveTo(x + dx * 17, y + dy * 17);
-      g.lineTo(x + dx * 24, y + dy * 24);
+      g.moveTo(x + dx * 10, y + dy * 10);
+      g.lineTo(x + dx * 21, y + dy * 21);
     }
     g.stroke();
-    g.fillStyle = COLORS.white;
-    g.fillRect(x - 1, y - 1, 2, 2);
+    g.globalAlpha = 1;
     if (this.hitMarker > 0 || this.killMarker > 0) {
       const k = Math.max(this.hitMarker, this.killMarker);
       g.strokeStyle = this.killMarker > 0 ? `rgba(255,80,90,${this.killMarker})` : `rgba(255,255,255,${k})`;
@@ -552,7 +556,11 @@ export class Hud {
     const g = this.g;
     const cx = this.w / 2, cy = this.h / 2;
     let dx = pr.x - cx, dy = pr.y - cy;
-    if (pr.behind && Math.abs(dx) < 1 && Math.abs(dy) < 1) dy = 1;
+    if (pr.behind) {
+      // Targets behind the camera go to the side edges, never under the player's own ship.
+      if (Math.abs(dx) < this.w * 0.15) dx = (dx >= 0 ? 1 : -1) * this.w * 0.3;
+      dy = Math.min(dy, this.h * 0.1);
+    }
     const ang = Math.atan2(dy, dx);
     // Ride an ellipse inside the screen edge; it is squashed vertically so arrows stay clear
     // of the corner panels.

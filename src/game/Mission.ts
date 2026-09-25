@@ -52,7 +52,7 @@ export interface MissionStats {
 }
 
 // Slightly ahead of the player so the wingmen stay in view of the chase camera.
-const WING_SLOTS = [new Vector3(-40, 5, -14), new Vector3(40, -4, -20)];
+const WING_SLOTS = [new Vector3(-46, 14, -60), new Vector3(48, 10, -72)];
 const WING_NAMES = ['Void Two', 'Void Three'];
 
 export class Mission {
@@ -222,7 +222,7 @@ export class Mission {
         this.objective = 'Shields down';
         this.objectiveDetail = 'Leviathan reactor chain reaction';
         this.showBanner('SHIELDS DOWN', 'Reactor chain reaction', 'good', 3);
-        this.say('Void Two', 'Its reactor is going! Get clear, get clear!', 'friend', 6);
+        this.say('Void Two', "The carrier's reactor is going! Get clear!", 'friend', 6);
         this.onFinaleStart?.();
         // Every remaining enemy fighter is caught in the blast.
         break;

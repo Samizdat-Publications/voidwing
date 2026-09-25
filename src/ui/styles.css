@@ -69,6 +69,7 @@ body { font-family: var(--font); color: var(--ink); user-select: none; }
 .msl-status[data-mode='reload'] .bar-fill { background: var(--objective); }
 .msl-status[data-mode='reload'] .weap-status { color: var(--objective); }
 .msl-status[data-mode='ready'] .weap-status { color: var(--friend); }
+.msl-status[data-mode='no lock'] .weap-status { color: var(--objective); animation: blink 0.3s steps(2) infinite; }
 
 .hud-target { top: 18px; right: 18px; width: 230px; }
 .tp-label { font-size: 11px; color: var(--muted); letter-spacing: 0.12em; }

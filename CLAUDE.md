@@ -66,7 +66,8 @@ Do them in order. After each milestone run the self-test loop below.
 
 1. [x] Greybox: core loop playable with primitive shapes, win and lose states work.
    (4 critic rounds, reports in docs/critic/m1-round*.md; progress shots in docs/progress/m1-greybox)
-2. [ ] Assets: model everything in Blender via the MCP, export GLB, swap into the game.
+2. [x] Assets: model everything in Blender via the MCP, export GLB, swap into the game.
+   (2 critic rounds, docs/critic/m2-round*.md; shots in docs/progress/m2-assets)
 3. [ ] Feel: animation, camera, particles, screen shake, hit feedback, sound, music.
 4. [ ] UI: title, HUD, pause, game over and victory screens with a consistent designed look.
 5. [ ] Polish and perf: steady 60 fps on a mid-range laptop, no console errors.
@@ -145,3 +146,18 @@ Newest last. Each entry: date, decision, reason.
   says when shots are being blocked. Auto-targeting skips generators the shield hides.
 - 2026-09-24: Bolts within 12 m of the camera are hidden and thinned out to 60 m (a flak bolt
   skimming the camera filled the screen as a flat band).
+- 2026-09-24: Hull textures are baked per asset from one shared procedural panel material
+  (`vw_common.panel_material`: normal-weighted 3D grid seams on two scales, per-panel tint, grime,
+  pointiness edge wear, stripe bands) into base colour x AO + tangent normal maps. The carrier bakes
+  one 2048 px atlas and is then split into bow / mid / stern meshes that share it.
+- 2026-09-24: The nebula is a procedural GLSL shader rendered once at start-up into a 768 px HDR
+  cubemap (scene background at 0.62 intensity) and PMREM-filtered into the scene environment, so
+  hulls pick up its colours. Stars stay as sized, twinkling points for crispness.
+- 2026-09-24: Blender emission strengths are clamped in the loader (engine glows to 3.2) because
+  Cycles-tuned values blow out to white under ACES tone mapping.
+- 2026-09-24: Three's shader diagnostics are off unless `?debug` (ANGLE's D3D compiler prints
+  harmless constant-folding notes for built-in chunks that three logs as warnings).
+- 2026-09-24: Enemy models are drawn larger than modelled (Razor 1.35x, Maul 1.2x, `ENEMY_SCALE`),
+  with radii and gun mounts matched in config. The current target's rim pulses brighter. Reason:
+  readability at dogfight range beats strict scale.
+- 2026-09-24: The crosshair is a hollow sight (ticks and a faint ring) so the target shows through.

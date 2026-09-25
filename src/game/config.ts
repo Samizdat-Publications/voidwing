@@ -37,7 +37,7 @@ const v = (x: number, y: number, z: number) => new Vector3(x, y, z);
 
 export const SPECS: Record<ShipKind, ShipSpec> = {
   player: {
-    displayName: 'KV-9 Kestrel', radius: 4.5, hull: 100, shield: 100, shieldRegen: 16, shieldDelay: 3,
+    displayName: 'KV-9 Kestrel', radius: 5, hull: 100, shield: 100, shieldRegen: 16, shieldDelay: 3,
     minSpeed: 0, cruiseSpeed: 115, boostSpeed: 240, accel: 55, grip: 2.2,
     pitchRate: 1.75, yawRate: 1.6, rollRate: 2.9, angResponse: 12,
     guns: [v(-2.4, -0.3, -3.4), v(2.4, -0.3, -3.4)], fireInterval: 0.085,
@@ -51,17 +51,19 @@ export const SPECS: Record<ShipKind, ShipSpec> = {
     bolt: 'wing', boltSpeed: 900, boltDamage: 4.2, boltLife: 1.3, missiles: 0, score: 0,
   },
   razor: {
-    displayName: 'Razor', radius: 8.5, hull: 55, shield: 30, shieldRegen: 6, shieldDelay: 4,
+    // Model drawn at 1.35x (Assets.ENEMY_SCALE); radius and gun mounts match the scaled model.
+    displayName: 'Razor', radius: 9.5, hull: 55, shield: 30, shieldRegen: 6, shieldDelay: 4,
     minSpeed: 40, cruiseSpeed: 104, boostSpeed: 185, accel: 50, grip: 2.4,
     pitchRate: 1.45, yawRate: 1.3, rollRate: 2.6, angResponse: 9,
-    guns: [v(-1.7, -0.2, -3.2), v(1.7, -0.2, -3.2)], fireInterval: 0.13,
+    guns: [v(-2.6, -0.6, -6.5), v(2.6, -0.6, -6.5)], fireInterval: 0.13,
     bolt: 'enemy', boltSpeed: 700, boltDamage: 3.2, boltLife: 1.6, missiles: 0, score: 100,
   },
   maul: {
-    displayName: 'Maul', radius: 15.5, hull: 130, shield: 60, shieldRegen: 8, shieldDelay: 5,
+    // Model drawn at 1.2x.
+    displayName: 'Maul', radius: 16, hull: 130, shield: 60, shieldRegen: 8, shieldDelay: 5,
     minSpeed: 30, cruiseSpeed: 86, boostSpeed: 150, accel: 30, grip: 1.8,
     pitchRate: 0.85, yawRate: 0.8, rollRate: 1.6, angResponse: 6,
-    guns: [v(-3.6, -1.1, -6.5), v(3.6, -1.1, -6.5)], fireInterval: 0.32,
+    guns: [v(-4.3, -1.7, -15.1), v(4.3, -1.7, -15.1)], fireInterval: 0.32,
     bolt: 'heavy', boltSpeed: 480, boltDamage: 9, boltLife: 2.4, missiles: 2, score: 250,
   },
 };
@@ -172,7 +174,7 @@ export const ARENA = {
 export const CAPITAL = {
   shieldRadii: new Vector3(130, 125, 380),
   generatorHull: 380,
-  generatorRadius: 15,
+  generatorRadius: 20,
   turretRange: 1500,
   turretFireInterval: 0.22,
   turretBurst: 4,

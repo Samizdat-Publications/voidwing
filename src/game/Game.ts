@@ -6,6 +6,7 @@ import { installTestHooks } from '../debug/TestHooks';
 import { Assets } from '../render/Assets';
 import { CameraRig } from '../render/CameraRig';
 import { Effects } from '../render/Effects';
+import { setRimBoost } from '../render/materials';
 import { Sky } from '../render/Sky';
 import { Hud } from '../ui/Hud';
 import { Screens, type EndStats } from '../ui/Screens';
@@ -46,6 +47,7 @@ export class Game {
   private readonly seed: number;
   private godMode = false;
   private missionStarted = false;
+  private highlighted: Ship | null = null;
 
   constructor(container: HTMLElement) {
     this.engine = new Engine(container);
@@ -71,7 +73,9 @@ export class Game {
 
   async init(): Promise<void> {
     this.screens.show('loading');
+    this.assets.maxAnisotropy = Math.min(8, this.engine.renderer.capabilities.getMaxAnisotropy());
     await this.assets.load((f) => this.screens.setLoading(f));
+    if (this.assets.missing.length) console.info('VOID WING: greybox stand-ins for', this.assets.missing.join(', '));
     this.buildWorld();
     this.enterTitle();
     this.last = performance.now();
@@ -87,8 +91,15 @@ export class Game {
     const rim = new DirectionalLight(0x6f9cff, 1.1);
     rim.position.set(0.6, -0.25, 0.75).multiplyScalar(1000);
     scene.add(rim);
-    scene.add(new HemisphereLight(0x8aa2d0, 0x3a2640, 1.1));
+    scene.add(new HemisphereLight(0x8aa2d0, 0x3a2640, 0.75));
     this.sky = new Sky();
+    this.sky.bake(this.engine.renderer);
+    scene.background = this.sky.background;
+    // A backdrop, not the subject: keep the nebula well below the action and the HUD.
+    scene.backgroundIntensity = 0.62;
+    // The nebula doubles as image-based lighting, so hulls pick up its colours.
+    scene.environment = this.sky.environment;
+    scene.environmentIntensity = 1.15;
     scene.add(this.sky.group);
     this.effects = new Effects(scene);
     this.world = new World(scene, this.assets, this.effects, this.seed);
@@ -356,9 +367,16 @@ export class Game {
       this.effects.update(simDt);
     }
     if (this.state !== 'paused') this.rig.update(dt, w.player && w.player.alive ? w.player : null);
-    this.sky.update(this.engine.camera);
+    this.sky.update(this.engine.camera, performance.now() / 1000, this.engine.pixelRatio);
 
     const p = w.player;
+    // The current target's rim pulses brighter so it stands out from the crowd.
+    const tgt = p && p.alive && p.target && 'model' in p.target ? (p.target as Ship) : null;
+    if (tgt !== this.highlighted) {
+      if (this.highlighted) setRimBoost(this.highlighted.model, 1);
+      this.highlighted = tgt;
+    }
+    if (tgt) setRimBoost(tgt.model, 1.9 + 0.5 * Math.sin(performance.now() / 160));
     if (p && (this.state === 'playing' || this.state === 'finale' || this.state === 'dying')) {
       if (this.controller.missileDenied) this.hud.onNoLock();
       this.hud.update(dt, { world: w, player: p, controller: this.controller, mission: this.mission, camera: this.engine.camera });
