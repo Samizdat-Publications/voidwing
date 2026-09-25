@@ -183,7 +183,7 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
       if (picked && !(await page.evaluate(() => window.__VW.showcaseRockAlive()))) {
         if (fired) await page.mouse.up();
         fired = false;
-        await sleep(450);
+        await sleep(300);
         await shot('asteroid_split');
       }
       break;
@@ -308,7 +308,7 @@ async function runMission({ passive = false } = {}) {
     if (st.gameState === 'finale') {
       // Blast at 7.4 s of the 9.6 s finale (progress 0.77).
       await shotOnce('finale_chain', (st.capital?.finale ?? 0) > 0.45);
-      await shotOnce('finale_blast', (st.capital?.finale ?? 0) > 0.83);
+      await shotOnce('finale_blast', (st.capital?.finale ?? 0) > 0.79);
     }
     // Let the death camera pull back and the HUD fade first.
     if (st.gameState === 'dying') {
@@ -431,7 +431,7 @@ const report = {
 fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2));
 fs.writeFileSync(path.join(outDir, 'console.log'), consoleLog.map((m) => `[${m.t.toFixed(1)}] ${m.type}: ${m.text}`).join('\n'));
 log(`outcome=${outcome} errors=${errors.length} warnings=${warnings.length} shots=${shots.length} avgFps=${report.perf.avgFps} minFps=${report.perf.minFps} worstFrame=${report.perf.worstFrameMs}ms prewarm=${report.prewarmMs}ms quality=${finalState?.quality} audioMax=${audioSeen.maxLevel} music=${[...audioSeen.modes].join(',')}`);
-if (finalState?.hitches?.length) log('hitches (game time, rAF gap, update ms, render ms):', finalState.hitches.map((h) => `${h.at}s ${h.phase} gap ${h.gap} u${h.update} r${h.render}${h.update > 30 ? ` [${h.slowest}]` : ''}`).join(' | '));
+if (finalState?.hitches?.length) log('hitches (game time, rAF gap, update ms, render ms):', finalState.hitches.map((h) => `${h.at}s ${h.phase} gap ${h.gap} u${h.update} r${h.render} [${h.slowest}]`).join(' | '));
 if (finalState?.latePrograms?.length) log('programs compiled after warm-up:', finalState.latePrograms.map((p) => `${p.at}s ${p.name}`).join(' | '));
 log('out:', outDir);
 await browser.close();

@@ -42,7 +42,7 @@ const FILES: Record<string, string> = {
 };
 
 const WINGMAN_TRIM = new Color(0x4d7dff);
-export const ENEMY_SCALE = { razor: 1.35, maul: 1.75 };
+export const ENEMY_SCALE = { razor: 1.35, maul: 2.2 };
 const _v = new Vector3();
 const _q = new Quaternion();
 const _q2 = new Quaternion();

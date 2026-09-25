@@ -41,12 +41,16 @@ const spriteVert = /* glsl */ `
   varying float vHot;
   void main() {
     vColor = color;
-    vAlpha = aAlpha;
     vHot = aHot;
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
+    // aSize is the sprite's world diameter. A sprite the camera is inside (flying through smoke or
+    // right past a blast) fades out and stops drawing: dozens of full-screen layers would stall
+    // the GPU and wash out the view.
+    float depth = -mv.z;
+    vAlpha = aAlpha * smoothstep(aSize * 0.25, aSize * 0.9, depth);
     // Engine flares keep a minimum size so distant fighters stay visible as points.
-    gl_PointSize = max(min(aSize * uScale / max(0.5, -mv.z), 900.0), uMinPx);
+    gl_PointSize = vAlpha < 0.003 ? 0.0 : max(min(aSize * uScale / max(0.5, depth), 700.0), uMinPx);
   }
 `;
 
@@ -829,10 +833,15 @@ export class Particles {
    * The carrier's final blast: a white core that swells into a fire cloud, two flat shock rings
    * (normal = ring axis, tilt pushes the axis so the rings read as ellipses), streaks and hull debris.
    */
-  nova(pos: Vector3, normal: Vector3, tilt: Vector3): void {
+  nova(pos: Vector3, normal: Vector3, tilt: Vector3, front: Vector3 = pos): void {
     const still = new Vector3();
-    this.add.spawn({ pos, vel: still, life: 0.5, size0: 40, size1: 230, color0: C(0xfff6e8, 2.4), color1: C(0xffa050, 1.0), alpha0: 1, alpha1: 0, hot: 0.8 });
-    this.add.spawn({ pos, vel: still, life: 2.4, size0: 140, size1: 430, color0: C(0xff9440, 0.8), color1: C(0x5a1606, 0.2), alpha0: 0.45, alpha1: 0, hot: 0.2 });
+    this.add.spawn({ pos: front, vel: still, life: 1.0, size0: 50, size1: 280, color0: C(0xfff0d8, 2.2), color1: C(0xff9040, 1.0), alpha0: 1, alpha1: 0, hot: 0.8 });
+    this.add.spawn({ pos: front, vel: still, life: 3.4, size0: 160, size1: 520, color0: C(0xff9440, 1.0), color1: C(0x5a1606, 0.25), alpha0: 0.7, alpha1: 0, hot: 0.25 });
+    // A dark pall of smoke that outlives the fire.
+    for (let i = 0; i < 9; i++) {
+      fxRng.unitVector(_v2);
+      this.smoke.spawn({ pos: _v.copy(front).addScaledVector(_v2, fxRng.range(30, 140)).clone(), vel: _v2.multiplyScalar(fxRng.range(12, 40)).clone(), life: fxRng.range(4, 6), size0: fxRng.range(120, 180), size1: fxRng.range(380, 520), color0: C(0x3a3430, 1), color1: C(0x141214, 1), alpha0: 0.55, alpha1: 0, drag: 0.25 });
+    }
     this.ring(pos, _v2.copy(normal).addScaledVector(tilt, 0.45).normalize(), 1500, 2.6, C(0xffb070, 2.1));
     _v.crossVectors(normal, tilt).normalize();
     this.ring(pos, _v2.copy(normal).addScaledVector(_v, 0.35).addScaledVector(tilt, 0.2).normalize(), 850, 1.9, C(0x9cc4ff, 1.4));
@@ -848,7 +857,7 @@ export class Particles {
     // Fireballs strung through the blast, so the cloud is ragged and full of burning pieces.
     for (let i = 0; i < 18; i++) {
       fxRng.unitVector(_v2);
-      _v.copy(pos).addScaledVector(_v2, fxRng.range(40, 260));
+      _v.copy(front).addScaledVector(_v2, fxRng.range(40, 260));
       this.add.spawn({ pos: _v.clone(), vel: _v2.multiplyScalar(fxRng.range(20, 90)).clone(), life: fxRng.range(1.2, 2.2), size0: fxRng.range(30, 60), size1: fxRng.range(90, 170), color0: C(0xffb050, 1.5), color1: C(0x902808, 0.3), alpha0: 0.8, alpha1: 0, drag: 0.4, hot: 0.4 });
     }
     if (this.debris) {

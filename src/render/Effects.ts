@@ -11,10 +11,11 @@ import {
 /** What game code needs from the effects system (greybox flashes or the full FX). */
 export interface EffectsApi {
   /** shell = false skips the shock shell (used for chains of explosions on the carrier). */
-  explosion(pos: Vector3, size: number, vel: Vector3, shell?: boolean): void;
+  /** nudge: metres to pull the blast toward the camera, so one set inside a hull is not hidden by it. */
+  explosion(pos: Vector3, size: number, vel: Vector3, shell?: boolean, nudge?: number): void;
   warpFlash(pos: Vector3, size: number): void;
   /** Lingering fire and smoke at a point (the carrier's fracture lines). size ~ flame metres. */
-  burn(pos: Vector3, size: number): void;
+  burn(pos: Vector3, size: number, nudge?: number): void;
   spark(pos: Vector3, color?: number, size?: number): void;
   dust(pos: Vector3, radius: number): void;
   clear(): void;

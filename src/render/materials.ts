@@ -38,6 +38,58 @@ export function addRim(mat: MeshStandardMaterial, color: Color, strength = 1.1, 
   mat.needsUpdate = true;
 }
 
+/**
+ * Procedural hull panelling for a very large model: panel seams on two scales and a per-panel
+ * tint, generated in object space (triplanar by the face normal). One baked texture cannot carry
+ * seams across a hull hundreds of metres long; this adds them at any distance. Chains after any
+ * existing onBeforeCompile (the team rim).
+ */
+export function addHullDetail(mat: MeshStandardMaterial, panel = 11): void {
+  if (mat.userData.hullDetail) return;
+  mat.userData.hullDetail = true;
+  const prev = mat.onBeforeCompile.bind(mat);
+  const prevKey = mat.customProgramCacheKey.bind(mat);
+  const p = panel.toFixed(1);
+  const sp = (panel * 0.36).toFixed(2);
+  const region = (panel * 2).toFixed(1);
+  mat.onBeforeCompile = (shader, renderer) => {
+    prev(shader, renderer);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vObjPos;\nvarying vec3 vObjNrm;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvObjPos = position;\nvObjNrm = normal;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        varying vec3 vObjPos;
+        varying vec3 vObjNrm;
+        float hullHash(vec2 q) { return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
+        float hullSeams(vec2 q, float size, float width) {
+          vec2 g = q / size;
+          vec2 d = abs(fract(g) - 0.5);
+          vec2 w = fwidth(g) * 1.2 + width / size;
+          vec2 l = smoothstep(0.5 - w, vec2(0.5), d);
+          return max(l.x, l.y);
+        }`,
+      )
+      .replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        {
+          vec3 an = abs(vObjNrm);
+          vec2 hq = an.x > an.y && an.x > an.z ? vObjPos.yz : (an.y > an.z ? vObjPos.xz : vObjPos.xy);
+          float bigSeam = hullSeams(hq, ${p}, 0.35);
+          float smallSeam = hullSeams(hq + 3.1, ${sp}, 0.18) * step(0.55, hullHash(floor(hq / ${region})));
+          float tint = 0.84 + 0.3 * hullHash(floor(hq / ${p}));
+          float fade = 1.0 - smoothstep(1800.0, 3200.0, length(vViewPosition));
+          diffuseColor.rgb *= mix(1.0, tint * (1.0 - 0.5 * max(bigSeam, smallSeam * 0.7)), fade);
+        }`,
+      );
+  };
+  mat.customProgramCacheKey = () => `${prevKey()}|hull-${p}`;
+  mat.needsUpdate = true;
+}
+
 function eachMaterial(root: Object3D, fn: (m: Material) => void): void {
   root.traverse((o) => {
     const mesh = o as Mesh;

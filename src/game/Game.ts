@@ -631,7 +631,15 @@ export class Game {
       let slowest = '';
       let slowMs = -1;
       for (const k in this.prof) if (this.prof[k] > slowMs) [slowest, slowMs] = [k, this.prof[k]];
-      this.hitches.push({ at: Math.round(this.world.time * 10) / 10, gap: Math.round(elapsed), update: Math.round(t1 - t0), render: Math.round(t2 - t1), phase: this.mission.phase.kind, slowest: `${slowest} ${Math.round(slowMs)}` });
+      const info = this.engine.renderer.info.render;
+      const pt = this.effects.particles;
+      const cap = this.world.capital;
+      const camShield = cap.state === 'active' ? Math.round(cap.shieldDistance(this.engine.camera.position)) : -1;
+      const hull = this.world.player ? Math.round(this.world.player.hullFraction * 100) : -1;
+      this.hitches.push({
+        at: Math.round(this.world.time * 10) / 10, gap: Math.round(elapsed), update: Math.round(t1 - t0), render: Math.round(t2 - t1), phase: this.mission.phase.kind,
+        slowest: `${slowest} ${Math.round(slowMs)} | calls ${info.calls} tris ${info.triangles} pts ${info.points} | add ${pt.add.count} smoke ${pt.smoke.count} sparks ${pt.sparks.count} | camShield ${camShield} hull ${hull}`,
+      });
       if (this.hitches.length > 12) this.hitches.shift();
     }
   }
@@ -653,7 +661,9 @@ export class Game {
     cam.lookAt(t.position);
     const model = (t as Ship).model;
     // A generator is small on a huge hull: frame its pylon and some of the carrier around it.
-    const vis = t.kind === 'generator' ? Math.max(80, t.radius * 4) : t.radius * (model ? model.scale.x : 1) * 1.5;
+    // Frame by the drawn size; a bomber's hull fills less of its radius than a fighter's wings do.
+    const fill = t.kind === 'maul' ? 1.05 : 1.5;
+    const vis = t.kind === 'generator' ? Math.max(80, t.radius * 4) : t.radius * (model ? model.scale.x : 1) * fill;
     cam.fov = Math.min(40, Math.max(0.6, (2 * Math.atan(vis / Math.max(dist, 1)) * 180) / Math.PI));
     cam.aspect = rect.width / rect.height;
     cam.near = Math.max(1, dist - vis * 6);

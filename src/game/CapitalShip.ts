@@ -6,12 +6,13 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  MeshStandardMaterial,
   Object3D,
   Quaternion,
   Vector3,
 } from 'three';
 import { clamp, fxRng, leadPoint } from '../core/math';
-import { applyTeamRim } from '../render/materials';
+import { addHullDetail, applyTeamRim } from '../render/materials';
 import { ShieldBubble } from '../render/ShieldFX';
 import { ARENA, CAPITAL } from './config';
 import { Entity } from './Entity';
@@ -201,6 +202,14 @@ export class CapitalShip {
     this.hull = world.assets.model('leviathan');
     // A faint, tight warm rim keeps the hull's silhouette readable on its shadowed side.
     applyTeamRim(this.hull, CARRIER_RIM, 0.16, 3.2);
+    // Panel seams and tint across the hull (the baked texture is far too coarse for 940 m).
+    this.hull.traverse((o) => {
+      const mesh = o as Mesh;
+      if (!mesh.isMesh) return;
+      for (const m of (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as MeshStandardMaterial[]) {
+        if (m.isMeshStandardMaterial && !/Glow/.test(m.name) && m.emissiveIntensity < 0.5) addHullDetail(m);
+      }
+    });
     this.object.add(this.hull);
     this.homePos = ARENA.capitalPos.clone();
     this.object.position.copy(this.homePos);
@@ -366,7 +375,7 @@ export class CapitalShip {
     for (const g of this.generators) {
       if (g.alive || g.burnLeft <= 0) continue;
       g.burnLeft -= dt;
-      if (fxRng.next() < dt * 14) {
+      if (fxRng.next() < dt * 10) {
         _v.set(fxRng.range(-6, 6), fxRng.range(-4, 6), fxRng.range(-6, 6)).add(g.position);
         world.effects.burn(_v, fxRng.range(6, 11) * Math.min(1, g.burnLeft / 3 + 0.3));
       }
@@ -431,7 +440,7 @@ export class CapitalShip {
         _v.set(fxRng.range(-40, 40), fxRng.range(-22, 26), fxRng.range(-6, 6)).multiplyScalar(CAPITAL.scale).add(end);
         _v.applyQuaternion(sec.obj.quaternion).add(sec.obj.position);
         this.object.localToWorld(_v);
-        world.effects.burn(_v, fxRng.range(12, 22));
+        world.effects.burn(_v, fxRng.range(12, 22), 25);
       }
     }
     this.explosionTimer -= dt;
@@ -448,21 +457,21 @@ export class CapitalShip {
         _v.copy(pts[Math.floor(fxRng.next() * pts.length)]).add(_v2.set(fxRng.range(-15, 15), fxRng.range(-10, 10), fxRng.range(-25, 25)));
       }
       this.object.localToWorld(_v);
-      world.effects.explosion(_v, fxRng.range(2.5, 5.5), this.velocityZero, false);
+      world.effects.explosion(_v, fxRng.range(2.5, 5.5), this.velocityZero, false, 45);
       world.events.emit('capitalExplosion', { position: _v.clone(), big: false });
     }
     if (this.stateTime > blastAt && !this.blasted) {
       this.blasted = true;
       // The core flash, shock rings and hull debris come from the FX 'capitalExplosion' handler.
-      world.effects.explosion(this.object.position, 16, this.velocityZero, false);
+      world.effects.explosion(this.object.position, 16, this.velocityZero, false, 200);
       for (const s of this.sections) {
         _v.copy(s.center).applyQuaternion(s.obj.quaternion).add(s.obj.position);
         this.object.localToWorld(_v);
-        world.effects.explosion(_v, 6.5, this.velocityZero, false);
+        world.effects.explosion(_v, 6.5, this.velocityZero, false, 70);
       }
       world.events.emit('capitalExplosion', { position: this.object.position.clone(), big: true });
       // The blast shatters the rocks drifting around the wreck.
-      world.asteroids.vaporize(this.object.position, 520 * CAPITAL.scale, world);
+      world.asteroids.vaporize(this.object.position, 760 * CAPITAL.scale, world);
       this.onFinalBlast?.();
       // Bow and stern fly out along the keel, the middle rises; never toward the player (and camera).
       const toPlayer = _v2.set(0, 0, 0);
@@ -492,7 +501,7 @@ export class CapitalShip {
         _v.set(fxRng.range(-40, 40), fxRng.range(-20, 20), fxRng.range(-80, 80)).multiplyScalar(CAPITAL.scale).add(sec.center);
         _v.applyQuaternion(sec.obj.quaternion).add(sec.obj.position);
         this.object.localToWorld(_v);
-        world.effects.burn(_v, fxRng.range(14, 26));
+        world.effects.burn(_v, fxRng.range(14, 26), 35);
       }
     }
     if (this.stateTime > duration) {
@@ -550,7 +559,7 @@ export class CapitalShip {
       for (let i = 0; i < 4; i++) {
         _v.set(fxRng.range(-45, 45), fxRng.range(-25, 25), z + fxRng.range(-12, 12)).multiplyScalar(CAPITAL.scale);
         this.object.localToWorld(_v);
-        world.effects.explosion(_v, fxRng.range(4.5, 7), this.velocityZero, false);
+        world.effects.explosion(_v, fxRng.range(4.5, 7), this.velocityZero, false, 50);
       }
       world.events.emit('capitalExplosion', { position: _v.clone(), big: false });
     }

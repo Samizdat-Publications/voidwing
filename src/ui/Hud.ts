@@ -341,10 +341,16 @@ export class Hud {
     this.set('thr', Math.round(player.throttle * 100), (v) => (this.throttleFill.style.width = `${v}%`));
 
     const t = player.target;
-    this.set('tpVis', t && player.alive ? 1 : 0, (v) => this.targetPanel.classList.toggle('hidden', v === 0));
+    this.set('tpVis', t && player.alive ? 1 : 0, (v) => {
+      this.targetPanel.classList.toggle('hidden', v === 0);
+      this.panelRectsAge = 99;
+    });
     // The zoomed view has nothing to add when the target is right in front of you.
     const close = !!t && t.position.distanceTo(player.position) < t.radius * 3 + 25;
-    this.set('tvVis', t && player.alive && !close ? 1 : 0, (v) => this.targetView.classList.toggle('hidden', v === 0));
+    this.set('tvVis', t && player.alive && !close ? 1 : 0, (v) => {
+      this.targetView.classList.toggle('hidden', v === 0);
+      this.panelRectsAge = 99;
+    });
     if (t) {
       this.set('tpName', t.name, (v) => (this.targetName.textContent = String(v)));
       this.set('tpClass', CLASS_LABEL[t.kind] ?? '', (v) => (this.targetClass.textContent = String(v)));
@@ -360,6 +366,7 @@ export class Hud {
     const key = live.map((m) => m.time).join(',');
     if (key !== this.lastCommsKey) {
       this.lastCommsKey = key;
+      this.panelRectsAge = 99;
       this.comms.innerHTML = live
         .map((m) => `<div class="comm comm-${m.team}"><span class="comm-from">${esc(m.from)}</span><span class="comm-text">${esc(m.text)}</span></div>`)
         .join('');
@@ -383,7 +390,7 @@ export class Hud {
       if (player.hullFraction < 0.3) warns.push(['hull', 'HULL CRITICAL']);
       else if (player.shield < 1 && player.maxShield > 0) warns.push(['hull', 'SHIELDS DOWN']);
       if (controller.outOfBounds) warns.push(['bounds', 'RETURN TO COMBAT AREA']);
-      if (this.time - this.lastShieldBlock < 1.6 && !mission.banner) warns.push(['info', 'SHOTS BLOCKED BY SHIELD - FLANK THE GENERATOR']);
+      if (this.time - this.lastShieldBlock < 1.6 && !mission.banner) warns.push(['info', 'SHIELD IN THE WAY - FLANK THE GENERATOR']);
     }
     // Never more than two at once, most urgent first.
     warns.length = Math.min(warns.length, 2);
@@ -498,7 +505,7 @@ export class Hud {
           g.globalAlpha = 1;
           // One tag per target, pinned to the bracket's top-right corner: lock state, type and range
           // together, so it can never read as belonging to a neighbouring ship.
-          const blocked = e.objective && world.capital.shieldActive && world.capital.segmentShieldT(player.position, e.position) >= 0;
+          const blocked = e.objective && world.capital.shieldActive && (world.capital.segmentShieldT(player.position, e.position) >= 0 || this.time - this.lastShieldBlock < 1.6);
           const parts: string[] = [];
           if (lockTag) parts.push(lockTag);
           if (blocked) parts.push('SHIELD IN THE WAY');
@@ -510,7 +517,12 @@ export class Hud {
           const locked = lockTag === 'LOCK';
           // The tag sits flush against the frame (above, below, right or left, whichever side is
           // clear of other ships' brackets), so it can never read as another ship's label.
-          const { x: tx, y: ty } = this.placeTag(e, pr.x, pr.y, ss, tw);
+          let leadRect: Rect | null = null;
+          if (controller.hasLead) {
+            this.project(controller.lead, camera, _proj2);
+            if (_proj2.onScreen) leadRect = { x: _proj2.x - 10, y: _proj2.y - 10, w: 20, h: 20 };
+          }
+          const { x: tx, y: ty } = this.placeTag(e, pr.x, pr.y, ss, tw, leadRect);
           if (locked) {
             g.strokeStyle = color;
             g.lineWidth = 1.2;
@@ -623,7 +635,7 @@ export class Hud {
         g.closePath();
         g.stroke();
       }
-      if (m.target === player) this.drawThreat(m.position, camera, 136, COLORS.warn, m === nearestThreat ? 'MISSILE' : '');
+      if (m.target === player && !pr.onScreen) this.drawThreat(m.position, camera, 136, COLORS.warn, m === nearestThreat ? 'MISSILE' : '', shipRect);
     }
 
     // Lead: a yellow diamond where to shoot, tied to the target when it sits ahead of it.
@@ -763,10 +775,11 @@ export class Hud {
   }
 
   /** Where the target's tag goes: flush against its frame, on the first side clear of other brackets. */
-  private placeTag(target: Entity, x: number, y: number, ss: number, tw: number): { x: number; y: number } {
+  private placeTag(target: Entity, x: number, y: number, ss: number, tw: number, extra: Rect | null = null): { x: number; y: number } {
     const own = this.bracketRects.get(target);
     const blockers: Rect[] = [];
     for (const [e, r] of this.bracketRects) if (e !== target && r !== own) blockers.push(r);
+    if (extra) blockers.push(extra);
     const cands = [
       { x: x + 10, y: y - ss - 16 },
       { x: x + 10, y: y + ss },
@@ -835,7 +848,7 @@ export class Hud {
     return { ang: Math.atan2(dy, dx), behind: pr.behind };
   }
 
-  private drawThreat(pos: Vector3, camera: PerspectiveCamera, radius: number, color: string, label: string): void {
+  private drawThreat(pos: Vector3, camera: PerspectiveCamera, radius: number, color: string, label: string, avoid: Rect): void {
     const g = this.g;
     const { ang, behind } = this.screenAngle(pos, camera);
     const pulse = 0.65 + 0.35 * Math.sin(this.time * 16);
@@ -859,7 +872,14 @@ export class Hud {
     g.globalAlpha = 1;
     if (label) {
       g.font = '700 13px "Chakra Petch", system-ui, sans-serif';
-      const lx = this.w / 2 + Math.cos(ang) * (radius + 30), ly = this.h / 2 + Math.sin(ang) * (radius + 30) + 4;
+      // Push the label further out if it would print across your own ship.
+      let lr = radius + 30;
+      const inside = (r: number) => {
+        const x = this.w / 2 + Math.cos(ang) * r, y = this.h / 2 + Math.sin(ang) * r;
+        return x > avoid.x && x < avoid.x + avoid.w && y > avoid.y - 8 && y < avoid.y + avoid.h + 8;
+      };
+      while (inside(lr) && lr < radius + 200) lr += 16;
+      const lx = this.w / 2 + Math.cos(ang) * lr, ly = this.h / 2 + Math.sin(ang) * lr + 4;
       this.labelText(behind ? `${label} BEHIND` : label, lx, ly, color, 'center', pulse);
       g.font = '600 11px "Chakra Petch", "Rajdhani", system-ui, sans-serif';
     }

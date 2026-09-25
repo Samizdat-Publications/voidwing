@@ -53,14 +53,14 @@ const LOOKS: Record<string, Look> = {
   wingman: { flare: new Color(0.45, 0.6, 1).multiplyScalar(2.8), trail: new Color(0.3, 0.45, 1).multiplyScalar(1.2), width: 1.3, flareSize: 4.5, shield: 0x6f8cff },
   // Enemy engines glow without blooming over the hull (a tail chase looks straight into them).
   razor: { flare: new Color(1, 0.45, 0.2).multiplyScalar(2.4), trail: new Color(1, 0.33, 0.12).multiplyScalar(3.2), width: 2.8, flareSize: 5, shield: 0xff5a3a },
-  maul: { flare: new Color(1, 0.5, 0.2).multiplyScalar(2.4), trail: new Color(1, 0.4, 0.1).multiplyScalar(3), width: 5.2, flareSize: 10, shield: 0xff7a2a },
+  maul: { flare: new Color(1, 0.5, 0.2).multiplyScalar(2.4), trail: new Color(1, 0.4, 0.1).multiplyScalar(3), width: 6.5, flareSize: 12, shield: 0xff7a2a },
 };
 
 const FALLBACK_EXHAUST: Record<string, Vector3[]> = {
   player: [new Vector3(-1.3, 0, 6.2), new Vector3(1.3, 0, 6.2)],
   wingman: [new Vector3(-1.3, 0, 6.2), new Vector3(1.3, 0, 6.2)],
   razor: [new Vector3(0, 0, 8.2)],
-  maul: [new Vector3(-9.2, -1.4, 13.8), new Vector3(9.2, -1.4, 13.8)],
+  maul: [new Vector3(-11.6, -1.8, 17.4), new Vector3(11.6, -1.8, 17.4)],
 };
 
 const _p = new Vector3();
@@ -218,7 +218,9 @@ export class FX implements EffectsApi {
       const toCam = _v.subVectors(this.camPos, position);
       toCam.addScaledVector(up, -toCam.dot(up));
       if (toCam.lengthSq() < 1) toCam.set(1, 0, 0);
-      this.particles.nova(position, up, toCam.normalize());
+      // The fireball sits between the wreck and the camera (inside the hull it would be hidden).
+      const front = _p.subVectors(this.camPos, position).normalize().multiplyScalar(260).add(position);
+      this.particles.nova(position, up, toCam.normalize(), front);
     });
     ev.on('destroyed', ({ entity }) => {
       const fx = this.ships.get(entity as Ship);
@@ -289,13 +291,16 @@ export class FX implements EffectsApi {
   }
 
   // ---- EffectsApi (used by game code) ----
-  explosion(pos: Vector3, size: number, vel: Vector3, shell = true): void {
+  explosion(pos: Vector3, size: number, vel: Vector3, shell = true, nudge = 0): void {
+    // Sprites are flat at their centre depth: a blast centred inside a hull would be hidden by it.
+    if (nudge > 0) pos = _p.subVectors(this.camPos, pos).normalize().multiplyScalar(nudge).add(pos);
     this.particles.explosion(pos, size, vel, shell);
   }
   warpFlash(pos: Vector3, size: number): void {
     this.particles.warp(pos, size);
   }
-  burn(pos: Vector3, size: number): void {
+  burn(pos: Vector3, size: number, nudge = 0): void {
+    if (nudge > 0) pos = _p.subVectors(this.camPos, pos).normalize().multiplyScalar(nudge).add(pos);
     this.particles.burn(pos, size);
   }
   spark(pos: Vector3, color = 0xffd080, size = 1.2): void {
