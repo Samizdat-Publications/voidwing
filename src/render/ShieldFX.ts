@@ -30,6 +30,7 @@ const fragment = /* glsl */ `
   uniform float uIdle;
   uniform float uTime;
   uniform float uHexScale;
+  uniform float uFill;
   uniform vec4 uHits[${MAX_HITS}];
   varying vec3 vN;
   varying vec3 vV;
@@ -65,7 +66,7 @@ const fragment = /* glsl */ `
     }
     // A slow band of lit cells sweeps the surface so the bubble reads as a volume, not a rim.
     float band = exp(-pow((vP.y - sin(uTime * 0.4) * 0.85) * 5.0, 2.0));
-    float idle = (0.035 + 0.65 * fres + hex * (0.03 + 0.22 * fres) + band * hex * 0.18) * uIdle;
+    float idle = (0.035 + uFill * 0.25 + 0.65 * fres + hex * (0.03 + uFill + 0.22 * fres) + band * hex * (0.18 + uFill * 2.0)) * uIdle;
     float a = (idle + ripple * (0.5 + hex * 0.9) + glow * 0.9) * uStrength;
     gl_FragColor = vec4(uColor * a, a);
   }
@@ -79,7 +80,8 @@ export class ShieldBubble {
   private hitIndex = 0;
   private readonly local = new Vector3();
 
-  constructor(color: number, hexScale = 1, idle = 1) {
+  /** fill: extra lit cells across the face, so a big bubble reads as a volume (not only a rim). */
+  constructor(color: number, hexScale = 1, idle = 1, fill = 0) {
     for (let i = 0; i < MAX_HITS; i++) this.hits.push(new Vector4(0, 1, 0, -100));
     this.material = new ShaderMaterial({
       uniforms: {
@@ -88,6 +90,7 @@ export class ShieldBubble {
         uIdle: { value: idle },
         uTime: { value: 0 },
         uHexScale: { value: hexScale },
+        uFill: { value: fill },
         uHits: { value: this.hits },
       },
       vertexShader: vertex,

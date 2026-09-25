@@ -1,4 +1,4 @@
-import { DirectionalLight, Group, HemisphereLight, PerspectiveCamera, Vector3 } from 'three';
+import { DirectionalLight, Group, HemisphereLight, Mesh, MeshStandardMaterial, PerspectiveCamera, Vector3 } from 'three';
 import { Engine } from '../core/Engine';
 import { Input } from '../core/Input';
 import { Rng, formatTime } from '../core/math';
@@ -68,6 +68,13 @@ export class Game {
   frameMs = 16.7;
   /** Longest single frame while flying since the test hooks last read it (hitch tracking). */
   private worstFrame = 0;
+  /** Recent long frames with where the time went (test diagnostics). */
+  readonly hitches: { at: number; gap: number; update: number; render: number; phase: string }[] = [];
+  /** Shader programs compiled after the warm-up, with when they appeared (test diagnostics). */
+  readonly latePrograms: { at: number; name: string; key: string }[] = [];
+  private programCount = -1;
+  /** How long the shader warm-up took (test diagnostics). */
+  prewarmMs = 0;
   private last = 0;
   private readonly params = new URLSearchParams(location.search);
   private readonly seed: number;
@@ -127,11 +134,15 @@ export class Game {
   async init(): Promise<void> {
     this.screens.show('loading');
     this.assets.maxAnisotropy = Math.min(8, this.engine.renderer.capabilities.getMaxAnisotropy());
-    await this.assets.load((f) => this.screens.setLoading(f));
+    await this.assets.load((f) => this.screens.setLoading(f * 0.85));
     if (this.assets.missing.length) console.info('VOID WING: greybox stand-ins for', this.assets.missing.join(', '));
     this.buildWorld();
-    this.enterTitle();
+    // Shaders compile behind the loading screen, so the title never sits over a blank frame.
+    const t0 = performance.now();
     await this.prewarm();
+    this.prewarmMs = Math.round(performance.now() - t0);
+    this.screens.setLoading(1);
+    this.enterTitle();
     this.last = performance.now();
     requestAnimationFrame((t) => this.loop(t));
   }
@@ -232,8 +243,18 @@ export class Game {
       if (team) applyTeamRim(m, TEAM_RIM[team], rim);
       m.position.set(x, 0, -150);
       group.add(m);
+      return m;
     };
-    add('kestrel', -60, 0.3, 'player');
+    // The player's own hull is fade-ready (transparent, single pass), as FX sets it up at spawn.
+    add('kestrel', -60, 0.3, 'player').traverse((o) => {
+      const mesh = o as Mesh;
+      if (!mesh.isMesh || mesh.userData.engineGlow) return;
+      for (const m of (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as MeshStandardMaterial[]) {
+        if (!m.isMeshStandardMaterial) continue;
+        m.transparent = true;
+        m.forceSinglePass = true;
+      }
+    });
     add('kestrel', -30, 0.9, 'player', 'wingman');
     add('razor', 0, 1.9, 'enemy');
     add('maul', 30, 1.9, 'enemy');
@@ -249,15 +270,24 @@ export class Game {
     const cap = this.world.capital.object;
     const capVisible = cap.visible;
     cap.visible = true;
+    // three builds a separate program per output: the main view draws into the HDR scene buffer,
+    // the targeting view straight to the screen. Compile every material for both.
     try {
+      r.setRenderTarget(this.post.composer.renderTarget1);
+      await r.compileAsync(scene, cam);
+      r.setRenderTarget(null);
       await r.compileAsync(scene, cam);
     } catch {
       // Shaders then compile on first use instead.
     }
-    // One frame through the post chain uploads the geometry and textures as well.
+    r.setRenderTarget(null);
+    // One frame to the screen and one through the post chain upload geometry and textures and
+    // cover the background, which is not part of the scene graph.
+    r.render(scene, cam);
     this.post.render(0);
     cap.visible = capVisible;
     scene.remove(group);
+    this.programCount = r.info.programs?.length ?? 0;
   }
 
   /** Render at a quality level: resolution cap and MSAA. */
@@ -565,7 +595,9 @@ export class Game {
     this.frameMs += (rawDt * 1000 - this.frameMs) * 0.05;
     this.fps = 1000 / Math.max(1, this.frameMs);
     const dt = Math.min(rawDt, 1 / 20);
+    const t0 = performance.now();
     this.update(dt);
+    const t1 = performance.now();
     if (this.state === 'playing' || this.state === 'finale') {
       const next = this.quality.sample(rawDt * 1000, rawDt);
       if (next) this.applyQuality(next);
@@ -575,6 +607,18 @@ export class Game {
     this.post.render(dt);
     this.renderTargetView();
     this.input.endFrame();
+    const t2 = performance.now();
+    const programs = this.engine.renderer.info.programs;
+    if (programs && this.programCount >= 0 && programs.length > this.programCount) {
+      for (const p of programs.slice(this.programCount)) {
+        if (this.latePrograms.length < 24) this.latePrograms.push({ at: Math.round(this.world.time * 10) / 10, name: p.name, key: p.cacheKey });
+      }
+    }
+    if (programs && this.programCount >= 0) this.programCount = programs.length;
+    if ((this.state === 'playing' || this.state === 'finale') && (elapsed > 60 || t2 - t0 > 40)) {
+      this.hitches.push({ at: Math.round(this.world.time * 10) / 10, gap: Math.round(elapsed), update: Math.round(t1 - t0), render: Math.round(t2 - t1), phase: this.mission.phase.kind });
+      if (this.hitches.length > 12) this.hitches.shift();
+    }
   }
 
   /** Targeting computer: a zoomed view of the current target, drawn into the HUD frame. */

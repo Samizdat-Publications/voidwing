@@ -18,6 +18,8 @@ export const COLORS = {
   dim: 'rgba(170,190,215,0.6)',
   missile: '#ffffff',
   lead: '#ffe45c',
+  /** Your own positive state: a missile lock. */
+  good: '#7dffb6',
 };
 
 export interface HudContext {
@@ -59,6 +61,10 @@ const _proj2: Proj = { x: 0, y: 0, behind: false, onScreen: false, depth: 0 };
 
 const esc = (s: string): string =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
+
+function overlaps(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent?: HTMLElement, html = ''): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -115,6 +121,8 @@ export class Hud {
   private readonly labelRects: Rect[] = [];
   /** HUD panel rects (from the DOM) that off-screen arrows slide around. */
   private panelRects: Rect[] = [];
+  /** Each on-screen contact's bracket rect this frame (tag placement and crowding). */
+  private readonly bracketRects = new Map<Entity, Rect>();
   private panelRectsAge = 99;
   /** True when the target or lead mark sits behind the player's own ship on screen. */
   overlapShip = false;
@@ -314,10 +322,10 @@ export class Hud {
     else if (cd > 0) [mode, frac] = ['RELOAD', 1 - cd / PLAYER.missileCooldown];
     else if (controller.locked) [mode, frac] = ['LOCKED', 1];
     else if (controller.lockProgress > 0) [mode, frac] = ['LOCKING', controller.lockProgress];
-    else [mode, frac] = ['READY', 0];
-    this.set('lockMode', mode, (v) => {
-      this.lockText.textContent = String(v);
-      this.lockRow.setAttribute('data-mode', String(v).toLowerCase());
+    else [mode, frac] = ['NO LOCK', 0];
+    this.set('lockMode', mode + (this.noLockFlash > 0 ? '!' : ''), (v) => {
+      this.lockText.textContent = mode;
+      this.lockRow.setAttribute('data-mode', String(v).toLowerCase().replace('!', ' flash'));
     });
     this.set('lockFrac', Math.round(frac * 50) * 2, (v) => (this.lockFill.style.width = `${v}%`));
     this.set('spd', Math.round(player.velocity.length()), (v) => (this.speedValue.textContent = String(v)));
@@ -384,7 +392,8 @@ export class Hud {
     g.clearRect(0, 0, this.w, this.h);
     if (!player.alive || this.mode !== 'combat') return;
     this.labelRects.length = 0;
-    // World labels never print through the banner while it is up.
+    // World labels never print over the HUD panels, or through the banner while it is up.
+    for (const r of this.panelRects) this.labelRects.push(r);
     if (mission.banner) this.labelRects.push({ x: this.w * 0.2, y: this.h * 0.17 - 6, w: this.w * 0.6, h: 80 });
     this.drawLowHull(player);
     if (this.shieldFlash > 0) {
@@ -413,17 +422,21 @@ export class Hud {
     const focal = (this.h / 2) / Math.tan((camera.fov * Math.PI) / 360);
     g.font = '600 11px "Chakra Petch", system-ui, sans-serif';
     g.textAlign = 'center';
+    this.bracketRects.clear();
     for (const e of contacts) {
       this.project(e.position, camera, pr);
       if (!pr.onScreen) continue;
-      const s = clamp((e.radius / Math.max(1, pr.depth)) * focal * 1.4, 7, e.objective ? 46 : 90);
-      this.labelRects.push({ x: pr.x - s, y: pr.y - s, w: s * 2, h: s * 2 });
+      const s = clamp((e.radius * this.viewScale(e) / Math.max(1, pr.depth)) * focal * 1.3, 7, e.objective ? 46 : 90);
+      const r = { x: pr.x - s, y: pr.y - s, w: s * 2, h: s * 2 };
+      this.labelRects.push(r);
+      this.bracketRects.set(e, r);
     }
     // The player's ship on screen: labels and turret markers keep off it; it fades when a target is behind it.
     this.project(player.position, camera, pr);
     const shipRect = { x: pr.x - 82, y: pr.y - 48, w: 164, h: 74 };
     this.labelRects.push(shipRect);
     let overlap = false;
+    let targetFrame: Rect | null = null;
     for (const e of contacts) {
       const d = e.position.distanceTo(player.position);
       this.project(e.position, camera, pr);
@@ -432,7 +445,9 @@ export class Hud {
       const isTarget = e === target;
       if (pr.onScreen) {
         // Generator markers stay compact even when you are right on top of one.
-        const size = clamp((e.radius / Math.max(1, pr.depth)) * focal * 1.4, isTarget ? 16 : d > 600 ? 7 : 9, e.objective ? 46 : 90);
+        const size = clamp((e.radius * this.viewScale(e) / Math.max(1, pr.depth)) * focal * 1.3, isTarget ? 16 : d > 600 ? 7 : 9, e.objective ? 46 : 90);
+        // A marker whose ship sits behind a HUD panel is hidden with it.
+        if (!isTarget && this.insidePanel(pr.x, pr.y)) continue;
         const underBanner = !!mission.banner && pr.y > this.h * 0.17 - 10 && pr.y < this.h * 0.17 + 80 && Math.abs(pr.x - this.w / 2) < this.w * 0.3;
         g.globalAlpha = underBanner ? 0.35 : 1;
         if (pr.x > shipRect.x - size && pr.x < shipRect.x + shipRect.w + size && pr.y > shipRect.y - size && pr.y < shipRect.y + shipRect.h + size) overlap = true;
@@ -462,6 +477,7 @@ export class Hud {
           // solid when locked. No extra rings stacked on the aim point.
           const p = locking ? controller.lockProgress : 1;
           const ss = size + 5 + (locking ? (1 - p) * 22 : 0);
+          targetFrame = { x: pr.x - ss, y: pr.y - ss, w: ss * 2, h: ss * 2 };
           const ready = missileReady && controller.locked;
           g.globalAlpha = locking && !controller.locked ? 0.55 + 0.45 * p : 1;
           this.drawBracket(pr.x, pr.y, ss, color, true, false, e.objective, e.kind === 'maul', ready ? 3.4 : 2.2);
@@ -477,40 +493,44 @@ export class Hud {
           const text = parts.join('  ');
           g.font = '700 11px "Chakra Petch", system-ui, sans-serif';
           const tw = g.measureText(text).width + 12;
-          const cxr = pr.x + ss, cyr = pr.y - ss;
           const locked = lockTag === 'LOCK';
-          const tx = locked ? clamp(pr.x - tw / 2, 6, this.w - tw - 6) : Math.min(cxr + 2, this.w - tw - 6);
-          const ty = Math.max(4, cyr - (locked ? 21 : 17));
-          if (lockTag === 'LOCK') {
+          // The tag sits flush against the frame (above, below, right or left, whichever side is
+          // clear of other ships' brackets), so it can never read as another ship's label.
+          const { x: tx, y: ty } = this.placeTag(e, pr.x, pr.y, ss, tw);
+          if (locked) {
             g.strokeStyle = color;
             g.lineWidth = 1.2;
             g.strokeRect(pr.x - ss, pr.y - ss, ss * 2, ss * 2);
           }
-          const fill = lockTag === 'LOCK' ? COLORS.foe : blocked ? 'rgba(255,140,58,0.92)' : 'rgba(6,10,19,0.78)';
+          const fill = locked ? COLORS.good : blocked ? 'rgba(255,140,58,0.92)' : 'rgba(6,10,19,0.78)';
           g.fillStyle = fill;
           g.fillRect(tx, ty, tw, 16);
-          g.strokeStyle = lockTag === 'LOCK' ? COLORS.foe : color;
+          g.strokeStyle = locked ? COLORS.good : color;
           g.lineWidth = 1;
           g.strokeRect(tx + 0.5, ty + 0.5, tw - 1, 15);
-          g.fillStyle = lockTag === 'LOCK' || blocked ? '#fff' : color === COLORS.objective ? COLORS.objective : COLORS.white;
+          g.fillStyle = locked ? '#06131c' : blocked ? '#fff' : color === COLORS.objective ? COLORS.objective : COLORS.white;
           g.textAlign = 'left';
           g.fillText(text, tx + 6, ty + 12);
           g.textAlign = 'center';
           g.font = '600 11px "Chakra Petch", system-ui, sans-serif';
           this.labelRects.push({ x: tx, y: ty, w: tw, h: 16 });
         } else {
-          if (!friend && !e.objective) g.globalAlpha = 0.85;
-          this.drawBracket(pr.x, pr.y, size, color, false, friend, e.objective, e.kind === 'maul', friend || e.objective ? undefined : 1.4);
+          // A neighbour whose bracket crosses the target's frame steps back, so the target's frame
+          // and tag are the ones that read.
+          const r = this.bracketRects.get(e);
+          const crowding = !!targetFrame && !!r && !friend && overlaps(r, targetFrame);
+          if (!friend && !e.objective) g.globalAlpha = crowding ? 0.35 : 0.85;
+          this.drawBracket(pr.x, pr.y, size, color, false, friend, e.objective, e.kind === 'maul', friend || e.objective ? undefined : crowding ? 1 : 1.4);
           g.globalAlpha = 1;
           if (e.objective) {
             const name = e.name.replace('Generator', 'GEN').toUpperCase();
             const ly = this.placeLabel(pr.x - 24, Math.max(4, pr.y - size - 19), 48, 14);
-            this.labelText(name, pr.x, ly + 11, color, 'center', 0.9);
+            if (ly !== null) this.labelText(name, pr.x, ly + 11, color, 'center', 0.9);
             this.drawMiniBars(pr.x, pr.y + size + 6, e, color);
           } else if (friend && d < 400 && Math.hypot(pr.x - this.w / 2, pr.y - this.h / 2) > 110) {
             // Wingman names stay out of the sight area.
             const ly = this.placeLabel(pr.x - 32, Math.max(4, pr.y - Math.min(size, 22) - 30), 64, 14);
-            this.labelText(e.name.toUpperCase(), pr.x, ly + 11, color, 'center', 0.8);
+            if (ly !== null) this.labelText(e.name.toUpperCase(), pr.x, ly + 11, color, 'center', 0.8);
           }
         }
       } else if (!friend && (isTarget || e.objective || d < 2600)) {
@@ -559,7 +579,7 @@ export class Hud {
       if (nearest) {
         this.project(nearest.position, camera, pr);
         const ly = this.placeLabel(pr.x - 20, pr.y + 8, 40, 14);
-        this.labelText('FLAK', pr.x, ly + 11, COLORS.foe, 'center', 0.9);
+        if (ly !== null) this.labelText('FLAK', pr.x, ly + 11, COLORS.foe, 'center', 0.9);
       }
     }
 
@@ -628,7 +648,7 @@ export class Hud {
     if (!pr.behind) {
       const dist = Math.hypot(adx, ady);
       const onLead = !!target && target.alive && controller.hasLead && this.project(controller.lead, camera, _proj2).onScreen && Math.hypot(_proj2.x - pr.x, _proj2.y - pr.y) < 16;
-      const ringR = dist > 10 && !onLead ? 9 : 0;
+      const ringR = onLead ? 0 : 9;
       g.strokeStyle = 'rgba(0,0,0,0.55)';
       g.lineWidth = 4;
       g.fillStyle = COLORS.white;
@@ -691,26 +711,45 @@ export class Hud {
     this.drawRadar(ctx);
   }
 
-  /** Reserve a label rect, sliding it down past any label already placed this frame. */
-  private placeLabel(x: number, y: number, w: number, h: number): number {
+  /**
+   * Reserve a label rect next to its marker, nudging it at most two label heights up or down past
+   * labels, brackets and HUD panels already placed this frame. Returns null (draw no label) when
+   * there is no room nearby: a label far from its marker would read as someone else's.
+   */
+  private placeLabel(x: number, y: number, w: number, h: number): number | null {
     const free = (ry: number) => !this.labelRects.some((r) => x < r.x + r.w && x + w > r.x && ry < r.y + r.h && ry + h > r.y);
-    let ry = Math.max(4, y);
-    if (!free(ry)) {
-      // Try stepping up, then down, in label-height steps.
-      let found = false;
-      for (let k = 1; k <= 6 && !found; k++) {
-        for (const dir of [-1, 1]) {
-          const cand = y + dir * k * (h + 2);
-          if (cand > 4 && cand < this.h - h - 4 && free(cand)) {
-            ry = cand;
-            found = true;
-            break;
-          }
-        }
-      }
+    const y0 = Math.max(4, y);
+    for (const cand of [y0, y0 - (h + 2), y0 + (h + 2), y0 - 2 * (h + 2), y0 + 2 * (h + 2)]) {
+      if (cand < 4 || cand > this.h - h - 4 || !free(cand)) continue;
+      this.labelRects.push({ x, y: cand, w, h });
+      return cand;
     }
-    this.labelRects.push({ x, y: ry, w, h });
-    return ry;
+    return null;
+  }
+
+  /** Where the target's tag goes: flush against its frame, on the first side clear of other brackets. */
+  private placeTag(target: Entity, x: number, y: number, ss: number, tw: number): { x: number; y: number } {
+    const own = this.bracketRects.get(target);
+    const blockers: Rect[] = [];
+    for (const [e, r] of this.bracketRects) if (e !== target && r !== own) blockers.push(r);
+    const cands = [
+      { x: x - tw / 2, y: y - ss - 16 },
+      { x: x - tw / 2, y: y + ss },
+      { x: x + ss + 2, y: y - 8 },
+      { x: x - ss - 2 - tw, y: y - 8 },
+    ].map((c) => ({ x: clamp(c.x, 6, this.w - tw - 6), y: clamp(c.y, 4, this.h - 20) }));
+    const pick = cands.find((c) => !blockers.some((r) => overlaps(r, { x: c.x, y: c.y, w: tw, h: 16 }))) ?? cands[0];
+    this.labelRects.push({ x: pick.x, y: pick.y, w: tw, h: 16 });
+    return pick;
+  }
+
+  /** How much larger the renderer draws a ship than its real size (so brackets fit the drawing). */
+  private viewScale(e: Entity): number {
+    return e.kind === 'razor' || e.kind === 'maul' || e.kind === 'wingman' ? e.viewScale : 1;
+  }
+
+  private insidePanel(x: number, y: number): boolean {
+    return this.panelRects.some((r) => x > r.x && x < r.x + r.w && y > r.y && y < r.y + r.h);
   }
 
   private labelText(text: string, x: number, y: number, color: string, align: CanvasTextAlign, alpha: number): void {

@@ -269,6 +269,9 @@ export class FX implements EffectsApi {
         for (const m of (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) as MeshStandardMaterial[]) {
           if (!m.isMeshStandardMaterial) continue;
           m.transparent = true;
+          // One pass: a double-sided transparent material would otherwise draw back then front
+          // faces, and each pass needs its own shader program.
+          m.forceSinglePass = true;
           m.opacity = 1;
           fx.fadeMats.push(m);
         }
@@ -330,16 +333,23 @@ export class FX implements EffectsApi {
   /** Needs the camera, so the game calls it separately after the camera moves. */
   updateView(dt: number, cameraPos: Vector3, viewportHeight: number, fov: number): void {
     this.camPos.copy(cameraPos);
-    // Readability at dogfight range: other ships are drawn up to 3.6x larger with distance (the
-    // player's bolts count most of that as hit radius), and their team rim glows brighter so a far
-    // fighter reads as a lit silhouette. The player's current target pulses on top of that.
+    // Readability at dogfight range: a far ship is drawn larger until it covers a minimum share of
+    // the screen (up to 3.6x; the player's bolts count most of that as hit radius), and its team rim
+    // glows brighter so it reads as a lit silhouette. The size floor follows each ship's own size,
+    // so big bombers are barely magnified and never swell into each other. Wingmen and anything
+    // near the carrier stay close to true size so the carrier keeps its scale.
     if (this.world) {
       const target = this.world.player?.target ?? null;
       const pulse = 0.5 * Math.sin(performance.now() / 160);
+      const tanHalf = Math.tan((fov * Math.PI) / 360);
+      const cap = this.world.capital;
+      const capAround = cap.state !== 'hidden' && cap.state !== 'dead';
       for (const s of this.world.ships) {
         if (s.kind === 'player' || !s.alive) continue;
         const d = s.position.distanceTo(cameraPos);
-        const scale = Math.min(3.6, Math.max(1, 1 + (d - 90) / 250));
+        let maxScale = s.team === 'player' ? 1.8 : 3.6;
+        if (capAround && s.position.distanceTo(cap.position) < 750) maxScale = s.team === 'player' ? 1.25 : 2;
+        const scale = Math.min(maxScale, Math.max(1, (0.06 * d * tanHalf) / s.radius));
         s.model.scale.setScalar(scale);
         s.viewScale = scale;
         const far = Math.min(1.8, Math.max(0, (d - 180) / 330));

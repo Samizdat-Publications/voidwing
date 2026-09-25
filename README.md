@@ -70,8 +70,9 @@ volume are in **Settings** on the title screen and in the pause menu.
 - Mouse-aim flight (point where you want to go), throttle, roll and boost; crosshair, lead
   indicator and steering ring.
 - Lasers with hit feedback, and lock-on missiles with a lock tone and a cooldown.
-- Razor dogfighters (fast, fight close) and Maul bombers (armoured, attack from range, shielded);
-  two AI wingmen fight with you.
+- Two enemy behaviours: Razor dogfighters chase you, fire on a lead solution, break off after a
+  pass and jink when hit; Maul bombers attack in pincer pairs with long strafing runs of heavy
+  plasma and the odd missile. Two AI wingmen fight alongside you.
 - Friend and foe markers, off-screen arrows, radar, target panel and a zoomed targeting-computer
   view of your current target.
 - An asteroid belt with rocks that split when shot.
@@ -93,8 +94,9 @@ also pick High, Medium or Low yourself in Settings.
 | Medium | 1.0 (native CSS pixels) | 2x MSAA |
 | Low | 0.75 | off |
 
-All shaders are compiled while the loading screen is up, so the first bomber, the carrier and the
-first explosion never stall a frame.
+Every shader is compiled while the loading screen is up (for both the main view and the targeting
+view), so the first bomber, the carrier and the first big explosion never stall a frame. In the
+headless self-test on a desktop GPU the game holds 60 fps with no shader compiles during play.
 
 ## How it is made
 

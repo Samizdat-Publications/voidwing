@@ -272,8 +272,8 @@ async function runMission({ passive = false } = {}) {
     if (st.gameState === 'playing') {
       await shotOnce('launch', st.phase === 'intro' && inPhase > 1.5);
       await shotOnce('wave1_combat', st.wave === 1 && st.phase === 'wave' && st.aim && st.aim.dist < 350);
-      await shotOnce('dogfight_close', st.phase === 'wave' && st.aim && st.aim.dist < 220 && st.aim.noseErr < 0.3);
-      await shotOnce('missile_lock', st.locked && st.aim && st.aim.dist < 650);
+      await shotOnce('dogfight_close', st.phase === 'wave' && st.target?.kind === 'razor' && st.aim && st.aim.dist < 220 && st.aim.noseErr < 0.3);
+      await shotOnce('missile_lock', st.locked && st.player?.missileReady && st.aim && st.aim.dist < 650);
       await shotOnce('wave2_bombers', st.wave === 2 && st.phase === 'wave' && ((st.target && st.target.kind === 'maul' && st.aim && st.aim.dist < 600) || inPhase > 30));
       // A live, mostly intact bomber close up: hold fire for a moment so impact flashes clear.
       const maulClose = (s) => s.target && s.target.kind === 'maul' && s.target.alive && s.target.hull > 40 && s.aim && s.aim.dist < 260 && s.aim.noseErr < 0.35;
@@ -421,12 +421,17 @@ const report = {
     worstFrameMs: Math.round(worstOverall),
   },
   console: { errors, warnings, count: consoleLog.length },
+  hitches: finalState?.hitches ?? [],
+  prewarmMs: finalState?.prewarmMs ?? null,
+  latePrograms: finalState?.latePrograms ?? [],
   audio: { maxLevel: audioSeen.maxLevel, modes: [...audioSeen.modes], states: [...audioSeen.states] },
   finalState,
 };
 fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2));
 fs.writeFileSync(path.join(outDir, 'console.log'), consoleLog.map((m) => `[${m.t.toFixed(1)}] ${m.type}: ${m.text}`).join('\n'));
-log(`outcome=${outcome} errors=${errors.length} warnings=${warnings.length} shots=${shots.length} avgFps=${report.perf.avgFps} minFps=${report.perf.minFps} worstFrame=${report.perf.worstFrameMs}ms quality=${finalState?.quality} audioMax=${audioSeen.maxLevel} music=${[...audioSeen.modes].join(',')}`);
+log(`outcome=${outcome} errors=${errors.length} warnings=${warnings.length} shots=${shots.length} avgFps=${report.perf.avgFps} minFps=${report.perf.minFps} worstFrame=${report.perf.worstFrameMs}ms prewarm=${report.prewarmMs}ms quality=${finalState?.quality} audioMax=${audioSeen.maxLevel} music=${[...audioSeen.modes].join(',')}`);
+if (finalState?.hitches?.length) log('hitches (game time, rAF gap, update ms, render ms):', finalState.hitches.map((h) => `${h.at}s ${h.phase} gap ${h.gap} u${h.update} r${h.render}`).join(' | '));
+if (finalState?.latePrograms?.length) log('programs compiled after warm-up:', finalState.latePrograms.map((p) => `${p.at}s ${p.name}`).join(' | '));
 log('out:', outDir);
 await browser.close();
 await server.close?.();

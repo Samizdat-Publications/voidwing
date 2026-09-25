@@ -124,14 +124,15 @@ button { font-family: var(--font); }
 .bar-track.throttle { flex: 1; }
 .bar-track.lockbar { flex: 1; }
 .weap-status { width: 66px; text-align: right; font-weight: 700; font-size: 12px; letter-spacing: 0.1em; color: var(--muted); }
-.msl-status[data-mode='locked'] .weap-status { color: var(--foe); }
-.msl-status[data-mode='locked'] .bar-fill { background: var(--foe); }
-.msl-status[data-mode='locking'] .bar-fill { background: rgba(255, 77, 94, 0.65); }
-.msl-status[data-mode='locking'] .weap-status { color: var(--ink-2); }
-.msl-status[data-mode='reload'] .bar-fill { background: var(--objective); }
-.msl-status[data-mode='reload'] .weap-status { color: var(--objective); }
-.msl-status[data-mode='ready'] .weap-status { color: var(--friend); }
-.msl-status[data-mode='no lock'] .weap-status { color: var(--warn); animation: blink 0.3s steps(2) infinite; }
+.msl-status[data-mode='locked'] .weap-status { color: var(--good); }
+.msl-status[data-mode='locked'] .bar-fill { background: var(--good); }
+.msl-status[data-mode='locking'] .bar-fill { background: rgba(232, 241, 255, 0.75); }
+.msl-status[data-mode='locking'] .weap-status { color: var(--ink); }
+.msl-status[data-mode='reload'] .bar-fill { background: var(--muted); }
+.msl-status[data-mode='reload'] .weap-status { color: var(--muted); }
+.msl-status[data-mode='no lock'] .weap-status { color: var(--muted); }
+.msl-status[data-mode='no lock flash'] .weap-status { color: var(--warn); animation: blink 0.3s steps(2) infinite; }
+.msl-status[data-mode='empty'] .weap-status { color: var(--warn); }
 
 .hud-target { top: var(--s4); right: var(--s4); width: 230px; }
 .hud-target::before { background: var(--foe); }

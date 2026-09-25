@@ -208,7 +208,7 @@ export class CapitalShip {
     this.object.visible = false;
     world.scene.add(this.object);
 
-    this.shield = new ShieldBubble(0xff8a3a, 1.4);
+    this.shield = new ShieldBubble(0xff8a3a, 1.4, 1, 0.05);
     this.shield.mesh.position.copy(this.layout.shieldCenter);
     this.shield.mesh.scale.copy(this.layout.shieldRadii);
     this.object.add(this.shield.mesh);

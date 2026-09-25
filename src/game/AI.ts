@@ -82,7 +82,9 @@ function separate(ship: Ship, desired: Vector3, world: World): void {
     if (o === ship || !o.alive || o.team !== ship.team) continue;
     _rel.subVectors(ship.position, o.position);
     const d = _rel.length();
-    if (d < 45 && d > 1e-3) desired.addScaledVector(_rel, (45 - d) / 45 / d * 1.2);
+    // Keep a hull-size gap, so big bombers never fly stacked on top of each other.
+    const min = Math.max(45, 24 + ship.radius + o.radius);
+    if (d < min && d > 1e-3) desired.addScaledVector(_rel, (min - d) / min / d * 1.2);
   }
   desired.normalize();
 }
@@ -250,8 +252,8 @@ export class BomberAI implements ShipController {
   private missileUsed = false;
   private extendTime = 3;
   /** Sideways offset on the approach so bomber pairs split up before their runs. */
-  private readonly flank = new Vector3();
-  private flankSet = false;
+  readonly flank = new Vector3();
+  flankSet = false;
 
   constructor(private readonly rng: Rng) {}
 
@@ -286,8 +288,18 @@ export class BomberAI implements ShipController {
         if (!this.flankSet) {
           this.flankSet = true;
           this.flank.crossVectors(_to, this.rng.unitVector(_tmp)).normalize();
+          // Pairs attack as a pincer: take the side opposite a bomber already closing on the same
+          // target, so the two come in from different angles instead of stacked in one line.
+          for (const o of world.ships) {
+            if (o === ship || !o.alive || o.kind !== 'maul' || o.target !== target) continue;
+            const ai = o.controller;
+            if (!(ai instanceof BomberAI) || !ai.flankSet || ai.state !== 'approach') continue;
+            this.flank.copy(ai.flank).negate();
+            this.flank.addScaledVector(_to, -this.flank.dot(_to) / Math.max(1e-6, _to.lengthSq())).normalize();
+            break;
+          }
         }
-        desired.addScaledVector(this.flank, clamp((dist - 1000) / 600, 0, 1) * 0.6).normalize();
+        desired.addScaledVector(this.flank, clamp((dist - 700) / 700, 0, 1) * 0.7).normalize();
         c.throttle = 1;
         c.boost = dist > 1400 && ship.boostEnergy > 50;
         if (dist < 1000 && _fwd.angleTo(desired) < 0.35) {
