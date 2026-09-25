@@ -109,7 +109,7 @@ export class Screens {
            <div class="howto"><div class="glyph glyph-cross"></div><div><b>The white cross is your guns.</b> Hold left mouse to fire lasers along it.</div></div>
            <div class="howto"><div class="glyph glyph-leaddot"></div><div><b>Shoot at the yellow dot.</b> It marks where your lasers meet a moving enemy: ahead of a crossing fighter, on top of one flying straight at you.</div></div>
            <div class="howto"><div class="glyph glyph-lock"></div><div><b>Missiles lock on.</b> Keep the target near the cross until its frame turns solid and a green LOCK tag appears, then press right mouse or F.</div></div>
-           <div class="howto"><div class="glyph glyph-arrow"></div><div><b>Arrows at the screen edge</b> point to enemies you cannot see. Tab switches target.</div></div>
+           <div class="howto"><div class="glyph glyph-arrow"></div><div><b>Arrows at the screen edge</b> point to enemies (red) and objectives (amber) you cannot see. Tab switches target.</div></div>
            <div class="howto"><div class="glyph glyph-shield"></div><div><b>Shields recharge, hull does not.</b> Boost (Shift) out of trouble; wave breaks rearm and patch you up.</div></div>
            <div class="howto"><div class="glyph glyph-hit"></div><div><b>Orange chevrons</b> around your ship point at whatever is hitting you from off screen. An orange triangle is a missile in flight; <b>MISSILE</b> arrows mean break hard and boost.</div></div>
            <div class="howto"><div class="glyph glyph-gen"></div><div><b>The carrier's shield</b> blocks your shots. If a generator tag says SHIELD IN THE WAY, swing out until it clears.</div></div>
@@ -155,7 +155,7 @@ export class Screens {
            <button class="btn primary" data-action="resume">Resume</button>
            <button class="btn" data-action="settings">Settings</button>
            <button class="btn" data-action="howto">How to fly</button>
-           <button class="btn" data-action="retry">Restart wave</button>
+           <button class="btn" data-action="retry">Retry from checkpoint</button>
            <button class="btn subtle" data-action="title">Quit to title</button>
          </div>
        </div>`,
@@ -183,7 +183,7 @@ export class Screens {
          <div class="stats"></div>
          <div class="menu row">
            <button class="btn primary" data-action="restart">Fly again</button>
-           <button class="btn subtle" data-action="title">Title screen</button>
+           <button class="btn subtle" data-action="title">Quit to title</button>
          </div>
        </div>`,
     );

@@ -77,6 +77,9 @@ export class SoundDirector {
     ev.on('asteroidCollision', ({ ship }) => {
       if (ship === world.player) a.hullHit(0, 1.3);
     });
+    ev.on('hullScrape', ({ ship }) => {
+      if (ship === world.player) a.hullHit(0, 1.3);
+    });
     ev.on('shipWarpedIn', ({ ship }) => {
       if (ship.team !== 'enemy') return;
       const s = this.spatial(ship.position);

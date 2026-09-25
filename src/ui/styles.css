@@ -142,7 +142,9 @@ button { font-family: var(--font); }
 .hud-target[data-kind='obj'] .tp-name { color: var(--objective); }
 .tp-class { font-size: 11px; letter-spacing: 0.16em; color: var(--ink-2); margin-top: 1px; }
 .tp-dist { font-size: 13px; color: var(--muted); margin: 2px 0 var(--s2); font-variant-numeric: tabular-nums; }
-.tp-bar { height: 5px; background: rgba(255, 255, 255, 0.08); margin-top: var(--s1); position: relative; }
+.tp-row { display: flex; align-items: center; gap: var(--s2); margin-top: 3px; }
+.tp-row-label { width: 44px; font-size: 9px; font-weight: 600; letter-spacing: 0.14em; color: var(--muted); }
+.tp-bar { flex: 1; height: 5px; background: rgba(255, 255, 255, 0.08); position: relative; }
 .tp-fill { position: absolute; inset: 0 auto 0 0; background: var(--foe); }
 .hud-target[data-kind='obj'] .tp-hull .tp-fill { background: var(--objective); }
 .tp-shield .tp-fill { background: var(--friend); }

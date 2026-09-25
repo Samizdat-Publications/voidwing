@@ -26,6 +26,8 @@ export interface WorldEvents extends Record<string, unknown> {
   asteroidHit: { position: Vector3; radius: number };
   asteroidDestroyed: { position: Vector3; radius: number; tier: number };
   asteroidCollision: { ship: Ship; impact: number; point: Vector3 };
+  /** A ship scraped a generator pylon (not a rock). */
+  hullScrape: { ship: Ship; impact: number; point: Vector3 };
   asteroidVaporized: { position: Vector3; radius: number };
   turretFired: { position: Vector3 };
   capitalArrived: { position: Vector3 };
@@ -238,7 +240,16 @@ export class World {
           _n.multiplyScalar(1 / d);
           s.position.copy(g.position).addScaledVector(_n, minD);
           const vn = s.velocity.dot(_n);
-          if (vn < 0) s.velocity.addScaledVector(_n, -vn * 1.6);
+          if (vn < 0) {
+            // Bounce off hard (a scrape slows you and hurts), so nobody grinds along a pylon.
+            s.velocity.addScaledVector(_n, -vn * 1.9);
+            s.speed *= 0.6;
+            if (-vn > 8) {
+              const point = g.position.clone().addScaledVector(_n, g.radius);
+              s.takeDamage(Math.min(30, -vn * 0.3), point, null, this);
+              this.events.emit('hullScrape', { ship: s, impact: -vn, point });
+            }
+          }
         }
       }
     }

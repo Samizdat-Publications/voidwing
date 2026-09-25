@@ -65,6 +65,22 @@ export function avoidObstacles(ship: Ship, desired: Vector3, world: World, lookT
     _avoid.addScaledVector(_rel.normalize(), -urgency * 3.5);
   });
   const cap = world.capital;
+  // Generator pylons stand outside the shield, right where fighters make their attack runs.
+  if (cap.state === 'active' || cap.state === 'warping') {
+    for (const g of cap.generators) {
+      if (!g.alive) continue;
+      _rel.subVectors(g.position, ship.position);
+      const along = _rel.dot(_fwd);
+      if (along < -g.radius || along > look + g.radius) continue;
+      _rel.addScaledVector(_fwd, -along);
+      const dist = _rel.length();
+      const clearance = g.radius + ship.radius + margin + 8;
+      if (dist > clearance) continue;
+      const urgency = (1 - dist / clearance) * (1 - Math.max(0, along) / (look + g.radius));
+      if (dist < 1e-3) ship.up(_rel).negate();
+      _avoid.addScaledVector(_rel.normalize(), -urgency * 3.5);
+    }
+  }
   if (cap.state === 'active' || cap.state === 'warping' || cap.state === 'dying') {
     _tmp.copy(ship.position).addScaledVector(_fwd, look * 0.6);
     const d = cap.shieldDistance(_tmp);

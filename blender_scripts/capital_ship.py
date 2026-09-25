@@ -29,6 +29,9 @@ import vw_common as vw
 TEX = 2048
 PAINT, DARK, ACCENT = 0, 1, 2
 SHIELD_RADII = (105.0, 400.0, 125.0)  # x, y (length), z: tall enough to read as a bubble
+# The whole carrier is modelled at unit scale and scaled into the mesh data and hardpoints at
+# export (so the game can treat section-local units as metres). Keep in step with CAPITAL.scale.
+CARRIER_SCALE = 1.35
 
 # Hull stations: y, half-width, top, bottom
 PROFILE = [
@@ -326,6 +329,17 @@ def empty(build, name, loc, root, rot_dir=None, scale=None):
     return e
 
 
+def scale_carrier(objs, s):
+    """Scale the carrier about its origin into mesh data, hardpoint positions and the shield radii."""
+    m = Matrix.Scale(s, 4)
+    for ob in objs:
+        if ob.type == "MESH":
+            ob.data.transform(m)
+        ob.location = ob.location * s
+        if ob.name == "Shield":
+            ob.scale = ob.scale * s
+
+
 def build_leviathan(b):
     rng = random.Random(7)
     bm = bmesh.new()
@@ -360,6 +374,7 @@ def build_leviathan(b):
             marks.append(empty(b, f"HP_Hull_{i}_{j}", (x * (1 - abs(y) / 450), y, z), root))
     faces = sum(len(p.data.polygons) for p in sections + glow)
     vw.log(f"leviathan faces: {faces}")
+    scale_carrier([*sections, *glow, *marks], CARRIER_SCALE)
     vw.export_glb(b, [root, *sections, *glow, *marks], "leviathan.glb", quality=85)
     vw.preview(b, sections + glow, "leviathan.png", elev=28, azim=-55, size=1200)
     vw.preview(b, sections + glow, "leviathan_rear.png", elev=18, azim=150, size=1200)

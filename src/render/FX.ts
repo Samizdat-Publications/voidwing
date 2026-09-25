@@ -369,7 +369,9 @@ export class FX implements EffectsApi {
         if (capAround && s.position.distanceTo(cap.position) < 750) maxScale = s.team === 'player' ? 1.25 : 2;
         // The size floor eases off with range, so a far fighter still looks farther than a near one.
         const floor = 0.085 - 0.035 * Math.min(1, Math.max(0, (d - 250) / 750));
-        const scale = Math.min(maxScale, Math.max(1, (floor * d * tanHalf) / s.radius));
+        // Bombers keep a larger floor, so they always read as the heavy ships next to fighters.
+        const classFloor = s.kind === 'maul' ? floor * 1.45 : floor;
+        const scale = Math.min(maxScale, Math.max(1, (classFloor * d * tanHalf) / s.radius));
         s.model.scale.setScalar(scale);
         s.viewScale = scale;
         // The target's rim brightens a little and pulses; far ships get a touch more edge. Kept

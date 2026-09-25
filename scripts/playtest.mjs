@@ -285,12 +285,13 @@ async function runMission({ passive = false } = {}) {
       }
       await shotOnce('wave3_swarm', st.wave === 3 && st.phase === 'wave' && inPhase > 10);
       await shotOnce('wave_cleared', st.phase === 'break' && inPhase > 1);
+      await shotOnce('capital_warp', st.phase === 'capital' && inPhase > 0.9);
       await shotOnce('capital_arrival', st.phase === 'capital' && inPhase > 3.5);
       if (st.capital && firstGeneratorLeft < 0 && st.phase === 'capital') firstGeneratorLeft = st.capital.generatorsLeft;
       await shotOnce('generator_attack', st.phase === 'capital' && st.capital?.state === 'active' && st.target && st.target.kind === 'generator' && st.aim && st.aim.dist < 650);
       // Wait for the banner to finish fading in.
       if (!generatorDownAt && st.phase === 'capital' && st.capital && st.capital.generatorsLeft < firstGeneratorLeft) generatorDownAt = Date.now();
-      await shotOnce('generator_down', generatorDownAt > 0 && Date.now() - generatorDownAt > 700);
+      await shotOnce('generator_down', generatorDownAt > 0 && Date.now() - generatorDownAt > 250);
       // The player's shield taking a hit (shimmer on the ship).
       if (st.player && lastShield >= 0) await shotOnce('shield_hit', st.player.shield < lastShield - 1 && st.player.shield > 10);
       if (st.player) lastShield = st.player.shield;

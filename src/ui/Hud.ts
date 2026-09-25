@@ -185,9 +185,13 @@ export class Hud {
     this.targetName = el('div', 'tp-name', this.targetPanel);
     this.targetClass = el('div', 'tp-class', this.targetPanel);
     this.targetDist = el('div', 'tp-dist', this.targetPanel);
-    const th = el('div', 'tp-bar tp-shield', this.targetPanel);
+    const sr = el('div', 'tp-row', this.targetPanel);
+    el('span', 'tp-row-label', sr, 'SHIELD');
+    const th = el('div', 'tp-bar tp-shield', sr);
     this.targetShield = el('div', 'tp-fill', th);
-    const hh = el('div', 'tp-bar tp-hull', this.targetPanel);
+    const hr = el('div', 'tp-row', this.targetPanel);
+    el('span', 'tp-row-label', hr, 'HULL');
+    const hh = el('div', 'tp-bar tp-hull', hr);
     this.targetHull = el('div', 'tp-fill', hh);
     // Targeting computer: the game renders a zoomed view of the target into this frame.
     this.targetView = el('div', 'hud-target-view hidden', this.root);
@@ -337,10 +341,10 @@ export class Hud {
     this.set('thr', Math.round(player.throttle * 100), (v) => (this.throttleFill.style.width = `${v}%`));
 
     const t = player.target;
-    this.set('tpVis', t && player.alive ? 1 : 0, (v) => {
-      this.targetPanel.classList.toggle('hidden', v === 0);
-      this.targetView.classList.toggle('hidden', v === 0);
-    });
+    this.set('tpVis', t && player.alive ? 1 : 0, (v) => this.targetPanel.classList.toggle('hidden', v === 0));
+    // The zoomed view has nothing to add when the target is right in front of you.
+    const close = !!t && t.position.distanceTo(player.position) < t.radius * 3 + 25;
+    this.set('tvVis', t && player.alive && !close ? 1 : 0, (v) => this.targetView.classList.toggle('hidden', v === 0));
     if (t) {
       this.set('tpName', t.name, (v) => (this.targetName.textContent = String(v)));
       this.set('tpClass', CLASS_LABEL[t.kind] ?? '', (v) => (this.targetClass.textContent = String(v)));
@@ -453,11 +457,13 @@ export class Hud {
       if (pr.onScreen) {
         // Generator markers stay compact even when you are right on top of one.
         const size = clamp((e.radius * this.viewScale(e) / Math.max(1, pr.depth)) * focal * 1.15, isTarget ? 16 : d > 600 ? 7 : 9, e.objective ? 46 : 90);
-        // A marker whose ship sits behind a HUD panel is hidden with it.
-        if (!isTarget && this.insidePanel(pr.x, pr.y)) continue;
+        // A marker whose bracket crosses a HUD panel is hidden with it.
+        const br = this.bracketRects.get(e);
+        if (!isTarget && (this.insidePanel(pr.x, pr.y) || (br && this.panelRects.some((r) => overlaps(r, br))))) continue;
         const underBanner = !!mission.banner && pr.y > this.h * 0.17 - 10 && pr.y < this.h * 0.17 + 64 && Math.abs(pr.x - this.w / 2) < this.w * 0.25;
         g.globalAlpha = underBanner ? 0.35 : 1;
-        if (pr.x > shipRect.x - size && pr.x < shipRect.x + shipRect.w + size && pr.y > shipRect.y - size && pr.y < shipRect.y + shipRect.h + size) overlap = true;
+        // Fade your ship only for a small marker hiding behind it, never for a target that fills the view.
+        if (size < 44 && pr.x > shipRect.x - size && pr.x < shipRect.x + shipRect.w + size && pr.y > shipRect.y - size && pr.y < shipRect.y + shipRect.h + size) overlap = true;
         if (!isTarget && !e.objective && d > 1600) {
           g.fillStyle = color;
           g.globalAlpha = 0.85;
@@ -630,9 +636,9 @@ export class Hud {
       if (tOn && pr.onScreen && inFrame) {
         // The lead falls on the ship itself: a small dot, so the ship stays visible.
         g.beginPath();
-        g.arc(pr.x, pr.y, 2.6, 0, Math.PI * 2);
-        g.lineWidth = 2;
-        g.strokeStyle = 'rgba(0,0,0,0.6)';
+        g.arc(pr.x, pr.y, 3.6, 0, Math.PI * 2);
+        g.lineWidth = 3;
+        g.strokeStyle = 'rgba(0,0,0,0.75)';
         g.stroke();
         g.fillStyle = COLORS.lead;
         g.fill();
@@ -649,9 +655,9 @@ export class Hud {
           g.globalAlpha = 1;
         }
         g.beginPath();
-        g.arc(pr.x, pr.y, off > 12 ? 4.5 : 6, 0, Math.PI * 2);
-        g.lineWidth = 3;
-        g.strokeStyle = 'rgba(0,0,0,0.65)';
+        g.arc(pr.x, pr.y, off > 12 ? 6.5 : 7, 0, Math.PI * 2);
+        g.lineWidth = 3.5;
+        g.strokeStyle = 'rgba(0,0,0,0.75)';
         g.stroke();
         if (off > 12) {
           g.fillStyle = COLORS.lead;
@@ -928,11 +934,12 @@ export class Hud {
       g.lineTo(bx - sx * c, by);
     }
     if (heavy) {
-      // Bombers: a bar across the top and bottom so they read differently from fighters.
-      g.moveTo(x - s * 0.35, y - s);
-      g.lineTo(x + s * 0.35, y - s);
-      g.moveTo(x - s * 0.35, y + s);
-      g.lineTo(x + s * 0.35, y + s);
+      // Bombers: a raised double bar over the bracket, so they read apart from fighters at a glance.
+      const w = Math.max(7, s * 0.45);
+      g.moveTo(x - w, y - s - 5);
+      g.lineTo(x + w, y - s - 5);
+      g.moveTo(x - w * 0.7, y - s - 9);
+      g.lineTo(x + w * 0.7, y - s - 9);
     }
     g.stroke();
   }
@@ -1001,9 +1008,16 @@ export class Hud {
     const base = this.root.getBoundingClientRect();
     const rects: Rect[] = [];
     for (const el of this.root.querySelectorAll<HTMLElement>('.hud-objective, .hud-comms, .hud-target, .hud-target-view, .hud-status, .hud-weapons')) {
+      if (el.classList.contains('hidden')) continue;
       const r = el.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) continue;
       rects.push({ x: r.left - base.left, y: r.top - base.top, w: r.width, h: r.height });
+    }
+    // The target panel and the target view below it are one block (no arrow squeezes between).
+    const tp = this.targetPanel.getBoundingClientRect(), tv = this.targetView.getBoundingClientRect();
+    if (!this.targetPanel.classList.contains('hidden') && !this.targetView.classList.contains('hidden') && tp.width > 2 && tv.width > 2) {
+      const x0 = Math.min(tp.left, tv.left) - base.left, y0 = Math.min(tp.top, tv.top) - base.top;
+      rects.push({ x: x0, y: y0, w: Math.max(tp.right, tv.right) - base.left - x0, h: Math.max(tp.bottom, tv.bottom) - base.top - y0 });
     }
     const rad = this.radarGeom();
     rects.push({ x: rad.cx - rad.R, y: rad.cy - rad.R, w: rad.R * 2, h: rad.R * 2 });
@@ -1012,7 +1026,7 @@ export class Hud {
 
   /** Slide an edge point along its edge until it clears every HUD panel. */
   private dodgePanels(x: number, y: number, m: number): { x: number; y: number } {
-    const pad = 14;
+    const pad = 24;
     const sideEdge = x <= m + 1 || x >= this.w - m - 1;
     for (let pass = 0; pass < 3; pass++) {
       const hit = this.panelRects.find((r) => x > r.x - pad && x < r.x + r.w + pad && y > r.y - pad && y < r.y + r.h + pad);
@@ -1038,7 +1052,7 @@ export class Hud {
     const g = this.g;
     const { player, world } = ctx;
     const { cx, cy, R } = this.radarGeom();
-    g.fillStyle = 'rgba(6,14,26,0.55)';
+    g.fillStyle = 'rgba(6,12,22,0.84)';
     g.strokeStyle = 'rgba(120,190,255,0.35)';
     g.lineWidth = 1;
     g.beginPath();

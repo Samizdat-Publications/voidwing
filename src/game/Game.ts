@@ -226,6 +226,9 @@ export class Game {
         this.lastRockHit = this.world.time;
       }
     });
+    this.world.events.on('hullScrape', ({ ship }) => {
+      if (ship === this.world.player) this.rig.addTrauma(0.45);
+    });
     this.world.events.on('capitalArrived', () => {
       this.rig.addTrauma(0.5);
       this.syncMusic();

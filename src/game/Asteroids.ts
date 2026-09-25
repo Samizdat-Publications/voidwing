@@ -316,7 +316,7 @@ export class AsteroidField {
       mesh.setMatrixAt(n, _m);
       if (a.flash > 0 || a.hot > 0) {
         const h = a.hot * a.hot;
-        _flash.setRGB(1 + a.flash * 2.5 + h * 1.2, 1 + a.flash * 1.6 + h * 0.35, 1 + a.flash * 1.0 - h * 0.5);
+        _flash.setRGB(1 + a.flash * 2.5 + h * 0.45, 1 + a.flash * 1.6 + h * 0.1, 1 + a.flash * 1.0 - h * 0.5);
       } else _flash.copy(_white);
       mesh.setColorAt(n, _flash);
     }

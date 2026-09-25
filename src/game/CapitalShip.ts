@@ -428,7 +428,7 @@ export class CapitalShip {
         const sec = this.sections[Math.floor(fxRng.next() * this.sections.length)];
         if (!sec || !sec.ends.length) break;
         const end = sec.ends[Math.floor(fxRng.next() * sec.ends.length)];
-        _v.set(fxRng.range(-40, 40), fxRng.range(-22, 26), fxRng.range(-6, 6)).add(end);
+        _v.set(fxRng.range(-40, 40), fxRng.range(-22, 26), fxRng.range(-6, 6)).multiplyScalar(CAPITAL.scale).add(end);
         _v.applyQuaternion(sec.obj.quaternion).add(sec.obj.position);
         this.object.localToWorld(_v);
         world.effects.burn(_v, fxRng.range(12, 22));
@@ -441,7 +441,7 @@ export class CapitalShip {
       const sec = this.sections.length ? this.sections[Math.floor(fxRng.next() * this.sections.length)] : null;
       if (sec) {
         // A point on a drifting section.
-        _v.set(fxRng.range(-45, 45), fxRng.range(-25, 30), fxRng.range(-90, 90)).add(sec.center);
+        _v.set(fxRng.range(-45, 45), fxRng.range(-25, 30), fxRng.range(-90, 90)).multiplyScalar(CAPITAL.scale).add(sec.center);
         _v.applyQuaternion(sec.obj.quaternion).add(sec.obj.position);
       } else {
         const pts = this.layout.hullPoints;
@@ -462,7 +462,7 @@ export class CapitalShip {
       }
       world.events.emit('capitalExplosion', { position: this.object.position.clone(), big: true });
       // The blast shatters the rocks drifting around the wreck.
-      world.asteroids.vaporize(this.object.position, 520, world);
+      world.asteroids.vaporize(this.object.position, 520 * CAPITAL.scale, world);
       this.onFinalBlast?.();
       // Bow and stern fly out along the keel, the middle rises; never toward the player (and camera).
       const toPlayer = _v2.set(0, 0, 0);
@@ -489,7 +489,7 @@ export class CapitalShip {
         this.burnTimer += 0.05;
         const sec = this.sections[Math.floor(fxRng.next() * this.sections.length)];
         if (!sec) break;
-        _v.set(fxRng.range(-40, 40), fxRng.range(-20, 20), fxRng.range(-80, 80)).add(sec.center);
+        _v.set(fxRng.range(-40, 40), fxRng.range(-20, 20), fxRng.range(-80, 80)).multiplyScalar(CAPITAL.scale).add(sec.center);
         _v.applyQuaternion(sec.obj.quaternion).add(sec.obj.position);
         this.object.localToWorld(_v);
         world.effects.burn(_v, fxRng.range(14, 26));
@@ -519,9 +519,9 @@ export class CapitalShip {
     for (const l of this.lightMeshes()) l.visible = false;
     // name, drift (vy, vz), which ends face a neighbour (-1 = min z, +1 = max z).
     const defs: [string, number, number, number[]][] = [
-      ['Leviathan_Bow', 8, -40, [1]],
+      ['Leviathan_Bow', 9, -48, [1]],
       ['Leviathan_Mid', -2, 1, [-1, 1]],
-      ['Leviathan_Stern', -8, 36, [-1]],
+      ['Leviathan_Stern', -9, 43, [-1]],
     ];
     for (const [name, vy, vz, endSides] of defs) {
       const obj = this.hull.getObjectByName(name);
@@ -548,7 +548,7 @@ export class CapitalShip {
     // Fireballs along the two fracture lines.
     for (const z of [-120, 130]) {
       for (let i = 0; i < 4; i++) {
-        _v.set(fxRng.range(-45, 45), fxRng.range(-25, 25), z + fxRng.range(-12, 12));
+        _v.set(fxRng.range(-45, 45), fxRng.range(-25, 25), z + fxRng.range(-12, 12)).multiplyScalar(CAPITAL.scale);
         this.object.localToWorld(_v);
         world.effects.explosion(_v, fxRng.range(4.5, 7), this.velocityZero, false);
       }

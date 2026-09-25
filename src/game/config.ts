@@ -173,6 +173,8 @@ export const ARENA = {
 };
 
 export const CAPITAL = {
+  /** Model scale baked into leviathan.glb (CARRIER_SCALE in capital_ship.py): scales finale offsets. */
+  scale: 1.35,
   shieldRadii: new Vector3(130, 125, 380),
   generatorHull: 380,
   generatorRadius: 20,
