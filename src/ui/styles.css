@@ -85,7 +85,8 @@ button { font-family: var(--font); }
 .hud-warnings { position: absolute; top: 9%; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: var(--s2); }
 .warn { padding: 6px var(--s4); color: #fff; background: rgba(255, 122, 40, 0.88); font-weight: 700; font-size: 17px; letter-spacing: 0.16em; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); }
 .warn-missile { font-size: 21px; background: rgba(255, 70, 40, 0.92); box-shadow: 0 0 24px rgba(255, 90, 40, 0.55); animation: blink 0.4s steps(2) infinite; }
-.warn-hull { font-size: 19px; box-shadow: 0 0 18px rgba(255, 122, 40, 0.45); animation: blink 0.8s steps(2) infinite; }
+.warn-hull { font-size: 19px; background: rgba(230, 50, 50, 0.92); box-shadow: 0 0 18px rgba(255, 60, 50, 0.45); animation: blink 0.8s steps(2) infinite; }
+.warn-shield { font-size: 17px; }
 .warn-bounds { background: rgba(255, 194, 74, 0.9); color: #1a1000; text-shadow: none; }
 .warn-info { font-size: 14px; background: rgba(255, 194, 74, 0.88); color: #1a1000; text-shadow: none; }
 @keyframes blink { 50% { opacity: 0.45; } }

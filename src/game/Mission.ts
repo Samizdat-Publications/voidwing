@@ -212,7 +212,8 @@ export class Mission {
           this.objective = 'Regroup';
           this.objectiveDetail = 'Rearmed. Next wave soon';
           this.showBanner('WAVE CLEARED', 'Missiles rearmed', 'good', 2.4);
-          this.say('Void Three', 'Scope is clear. Nice shooting, lead.', 'friend');
+          const calls = ['Scope is clear. Nice shooting, lead.', 'That was the last of them. Rearming now.', 'Wave down! Stay sharp, they keep coming.'];
+          this.say('Void Three', calls[Math.min(calls.length - 1, Math.max(0, this.waveNumber - 1))], 'friend');
         }
         break;
       }
@@ -221,7 +222,7 @@ export class Mission {
         w.capital.warpIn(w);
         this.objective = 'Destroy the Leviathan';
         this.showBanner('LEVIATHAN', 'Hegemony carrier', 'warn', 3);
-        this.say('Halcyon', 'Its shield bubble stops our guns. Hit the four generator pylons from outside it!', 'command', 8);
+        this.say('Halcyon', 'Its shield bubble stops our guns. Hit the four generator pylons from outside it!', 'command', 6);
         break;
       case 'finale':
         this.objective = 'Leviathan breaking up';

@@ -396,7 +396,7 @@ export class Hud {
     if (player.alive) {
       if (world.missiles.incomingOn(player) > 0) warns.push(['missile', 'MISSILE INCOMING - BREAK HARD']);
       if (player.hullFraction < 0.3) warns.push(['hull', 'HULL CRITICAL']);
-      else if (player.shield < 1 && player.maxShield > 0) warns.push(['hull', 'SHIELDS DOWN']);
+      else if (player.shield < 1 && player.maxShield > 0) warns.push(['shield', 'SHIELDS DOWN']);
       if (controller.outOfBounds) warns.push(['bounds', 'RETURN TO COMBAT AREA']);
       if (this.time - this.lastShieldBlock < 1.6 && !mission.banner) warns.push(['info', 'SHIELD IN THE WAY - FLANK THE GENERATOR']);
     }

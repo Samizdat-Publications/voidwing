@@ -838,7 +838,7 @@ export class Particles {
    */
   nova(pos: Vector3, normal: Vector3, tilt: Vector3, front: Vector3 = pos): void {
     const still = new Vector3();
-    this.add.spawn({ pos: front, vel: still, life: 1.0, size0: 50, size1: 280, color0: C(0xffd9a0, 1.6), color1: C(0xff6a20, 0.8), alpha0: 1, alpha1: 0, hot: 0.5 });
+    this.add.spawn({ pos: front, vel: still, life: 1.0, size0: 50, size1: 280, color0: C(0xffa850, 1.25), color1: C(0xff5010, 0.7), alpha0: 1, alpha1: 0, hot: 0.3 });
     this.add.spawn({ pos: front, vel: still, life: 3.4, size0: 160, size1: 520, color0: C(0xff9440, 1.0), color1: C(0x5a1606, 0.25), alpha0: 0.7, alpha1: 0, hot: 0.25 });
     // A dark pall of smoke that outlives the fire.
     for (let i = 0; i < 9; i++) {

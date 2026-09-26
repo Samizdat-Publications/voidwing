@@ -100,6 +100,12 @@ export class Assets {
       // Engine glow discs get their brightness driven by throttle; Blender's strengths are tuned
       // for Cycles, so bring them into the game's tone-mapped range.
       // The generator core is a target you fly right up to: keep it from blooming the view white.
+      if (/Leviathan_Windows/.test(mesh.name)) {
+        for (const m of mats) {
+          const sm = m as MeshStandardMaterial;
+          if (sm.isMeshStandardMaterial) sm.emissiveIntensity *= 0.5;
+        }
+      }
       if (/Gen_Core/.test(mesh.name)) {
         for (const m of mats) {
           const sm = m as MeshStandardMaterial;

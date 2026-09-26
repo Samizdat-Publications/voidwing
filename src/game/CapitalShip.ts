@@ -292,17 +292,18 @@ export class CapitalShip {
       const distOut = p.position.length();
       const toCenter = p.position.clone().multiplyScalar(-1 / Math.max(1, distOut));
       fwd.addScaledVector(toCenter, clamp((distOut - 900) / 1200, 0, 1.6)).normalize();
-      const pos = p.position.clone().addScaledVector(fwd, 1000);
+      const pos = p.position.clone().addScaledVector(fwd, 1300);
       pos.y = clamp(pos.y, -120, 220);
       if (pos.length() > 2300) pos.setLength(2300);
-      // Never much farther than ~1.2 km from the player.
+      // Never much farther than ~1.5 km from the player.
       const d = pos.distanceTo(p.position);
-      if (d > 1250) pos.lerp(p.position, 1 - 1150 / d);
+      if (d > 1550) pos.lerp(p.position, 1 - 1450 / d);
       this.homePos.copy(pos);
       const toPlayer = p.position.clone().sub(pos);
       toPlayer.y = 0;
       toPlayer.normalize();
-      this.object.rotation.set(0, Math.atan2(toPlayer.x, toPlayer.z) + Math.PI / 2, 0);
+      // Three-quarters on rather than broadside: the first look shows its length and its deck.
+      this.object.rotation.set(0, Math.atan2(toPlayer.x, toPlayer.z) + Math.PI / 2 + 0.45, 0);
     }
     this.object.position.copy(this.homePos);
     world.asteroids.vaporize(this.homePos, Math.max(this.layout.shieldRadii.z, 300) + 120, world);

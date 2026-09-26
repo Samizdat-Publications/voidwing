@@ -17,12 +17,16 @@ Die and it is mission failed; retry from the current wave.
 - `npm run build` type-checks and builds to `dist/`; `npm run preview` serves the build.
 - `npm run playtest -- --scenario win|lose|ui|showcase|smoke` runs the headless Playwright
   self-test (screenshots, console log and report.json in `test-output/`). Add `--god` for the win
-  run and `--preview` to test the production build (`--nobuild` reuses dist/ for parallel runs).
+  run and `--preview` to test the production build (`--nobuild` reuses dist/ for parallel runs,
+  `--width 1920 --height 1080` for full-HD shots, `--quality high|medium|low|auto`). The report
+  and log include avg/min fps, the worst frame, long frames split into update and render time
+  with render stats, any shader compiled after the warm-up, the warm-up time and heap samples.
 - `npm run assets` rebuilds every GLB from `blender_scripts/` with Blender in background mode
   (set `BLENDER_PATH` if Blender is not at the default install path).
 
 URL flags for testing: `?test` exposes `window.__VW` hooks, `?god` makes the player invulnerable,
-`?phase=N` jumps to a mission phase, `?seed=N` fixes the asteroid layout, `?nosound`.
+`?phase=N` jumps to a mission phase, `?seed=N` fixes the asteroid layout, `?nosound`,
+`?quality=auto|high|medium|low`.
 
 ## Controls
 
@@ -75,7 +79,13 @@ Do them in order. After each milestone run the self-test loop below.
 4. [x] UI: title, HUD, pause, game over and victory screens with a consistent designed look.
    (11 critic rounds, docs/critic/m4-round*.md; shots in docs/progress/m4-ui. World readability,
    carrier art and the asteroid split carried into M5.)
-5. [ ] Polish and perf: steady 60 fps on a mid-range laptop, no console errors.
+5. [x] Polish and perf: steady 60 fps on a mid-range laptop, no console errors.
+   (9 critic rounds, docs/critic/m5-round*.md; shots in docs/progress/m5-polish. Rounds 1 to 4
+   each fixed a major problem; rounds 5 to 9 found nothing major, and the worst item in each was
+   the carrier's art direction, so the loop closed at "minor" rather than the "cosmetic" target,
+   as recorded in m5-round9.md. Perf: 60 fps average at 720p and 1080p in the headless self-test,
+   peak about 240k triangles, no shader compiles during play, 0 console errors or warnings.
+   Graphics Auto/High/Medium/Low for slower machines.)
 
 Done means: a first-time player can start, understand the controls, play, and reach both win and
 lose screens with no bugs; README.md with controls and how to run; `screenshots/` with 6 final
@@ -267,3 +277,7 @@ Newest last. Each entry: date, decision, reason.
   with damage and shake; the player's ship only fades for small markers behind it.
 - 2026-09-25: For the critic, the asteroid split frame comes from the standalone showcase run,
   which frames it against open space (in the long win run a big rock often sits behind it).
+- 2026-09-25: M5 closed after 9 critic rounds with the worst remaining item at "minor" (the
+  carrier's art direction; five rounds in a row with nothing major, the description changing
+  each time rather than the rating). Deliverables: README.md, screenshots/ (6 full-HD
+  player-view shots from the final build), docs/progress/m5-polish.
