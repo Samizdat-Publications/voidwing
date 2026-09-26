@@ -8,9 +8,15 @@
  * Starts a Vite server, opens the game in Chromium (GPU accelerated when available), plays it
  * with real mouse and keyboard input steered by a simple bot, captures screenshots from the
  * player camera at key moments and records console output. Writes report.json to the out dir.
+ *
+ * --film records the run as a 60 fps video (film.mp4, plus film.json with a frame number for
+ * every screenshot label). The page's clock is replaced by a virtual one: the script steps the
+ * game one 1/60 s frame at a time and captures each frame, so the footage plays back smoothly
+ * however slowly the frames were captured. Use it with --preview and --quality high.
  */
 import { chromium } from 'playwright';
 import { createServer, preview, build } from 'vite';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,6 +63,97 @@ const browser = await chromium.launch({
 });
 const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
 
+// ---------- film mode ----------
+const film = flag('film');
+const FILM_FPS = 60;
+const filmMarks = [];
+let filmFrame = 0;
+let filmCdp = null;
+let filmEnc = null;
+let filmLastJpeg = null;
+let filmRealStart = 0;
+if (film) {
+  // Virtual clock: until __film.begin() the page runs normally; after it, requestAnimationFrame
+  // callbacks only run when the script calls __film.step(), and performance.now() only moves then.
+  await page.addInitScript((fps) => {
+    const realRaf = window.requestAnimationFrame.bind(window);
+    const realNow = performance.now.bind(performance);
+    let manual = false;
+    let now = 0;
+    let queue = [];
+    let nextId = 1;
+    window.requestAnimationFrame = (cb) => {
+      if (!manual) return realRaf(cb);
+      const id = nextId++;
+      queue.push({ id, cb });
+      return id;
+    };
+    const realCancel = window.cancelAnimationFrame.bind(window);
+    window.cancelAnimationFrame = (id) => {
+      queue = queue.filter((q) => q.id !== id);
+      realCancel(id);
+    };
+    performance.now = () => (manual ? now : realNow());
+    window.__film = {
+      begin() {
+        now = realNow();
+        manual = true;
+      },
+      step() {
+        now += 1000 / fps;
+        const run = queue;
+        queue = [];
+        for (const q of run) q.cb(now);
+      },
+    };
+  }, FILM_FPS);
+}
+
+/** Starts filming: from here on the game only advances inside frame(). */
+async function filmBegin() {
+  filmCdp = await page.context().newCDPSession(page);
+  await filmCdp.send('Animation.enable');
+  await page.evaluate(() => window.__film.begin());
+  const ffmpeg = (await import('ffmpeg-static')).default;
+  filmEnc = spawn(ffmpeg, ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(FILM_FPS), '-c:v', 'mjpeg', '-i', '-',
+    '-c:v', 'libx264', '-preset', 'slow', '-crf', '14', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', path.join(outDir, 'film.mp4')],
+    { stdio: ['pipe', 'inherit', 'inherit'] });
+  filmRealStart = Date.now();
+  log('filming at', `${width}x${height}`);
+}
+
+/** One game frame: advance the virtual clock 1/60 s, render, capture. */
+async function frame() {
+  await page.evaluate(() => window.__film.step());
+  const { data } = await filmCdp.send('Page.captureScreenshot', { format: 'jpeg', quality: 94, optimizeForSpeed: true });
+  filmLastJpeg = Buffer.from(data, 'base64');
+  if (!filmEnc.stdin.write(filmLastJpeg)) await new Promise((r) => filmEnc.stdin.once('drain', r));
+  filmFrame++;
+  // CSS animations (HUD blinks, screen fades) run on real time: slow them to the capture rate.
+  if (filmFrame % 60 === 0) {
+    const rate = (filmFrame / FILM_FPS) / Math.max(0.001, (Date.now() - filmRealStart) / 1000);
+    await filmCdp.send('Animation.setPlaybackRate', { playbackRate: Math.min(1, rate) });
+    if (filmFrame % 1800 === 0) log(`filmed ${filmFrame} frames (${(filmFrame / FILM_FPS).toFixed(0)} s), ${(rate * FILM_FPS).toFixed(1)} frames per real second`);
+  }
+}
+
+async function filmEnd() {
+  filmEnc.stdin.end();
+  await new Promise((r) => filmEnc.on('close', r));
+  fs.writeFileSync(path.join(outDir, 'film.json'), JSON.stringify({ fps: FILM_FPS, frames: filmFrame, width, height, marks: filmMarks }, null, 2));
+  log(`film.mp4: ${filmFrame} frames, ${(filmFrame / FILM_FPS).toFixed(1)} s`);
+}
+
+/** Milliseconds for the bot's timers: game time when filming, wall time otherwise. */
+const clock = () => (filmCdp ? (filmFrame * 1000) / FILM_FPS : Date.now());
+
+/** Game-time pause: real sleep normally, captured frames when filming. */
+async function wait(ms) {
+  if (!filmCdp) return sleep(ms);
+  const n = Math.max(1, Math.round((ms / 1000) * FILM_FPS));
+  for (let i = 0; i < n; i++) await frame();
+}
+
 const consoleLog = [];
 page.on('console', (m) => consoleLog.push({ type: m.type(), text: m.text(), t: (Date.now() - t0) / 1000 }));
 page.on('pageerror', (e) => consoleLog.push({ type: 'pageerror', text: String(e && e.stack ? e.stack : e), t: (Date.now() - t0) / 1000 }));
@@ -74,8 +171,14 @@ const shots = [];
 let shotN = 0;
 async function shot(label) {
   shotN++;
-  const file = `${String(shotN).padStart(2, '0')}_${label}.png`;
-  await page.screenshot({ path: path.join(outDir, file) });
+  let file = `${String(shotN).padStart(2, '0')}_${label}.png`;
+  if (filmCdp) {
+    // The frame just filmed is the screenshot.
+    if (!filmLastJpeg) await frame();
+    file = file.replace(/\.png$/, '.jpg');
+    fs.writeFileSync(path.join(outDir, file), filmLastJpeg);
+    filmMarks.push({ label, frame: filmFrame - 1, t: (filmFrame - 1) / FILM_FPS });
+  } else await page.screenshot({ path: path.join(outDir, file) });
   const st = await state();
   shots.push({ file, label, t: (Date.now() - t0) / 1000, phase: st.phase, gameState: st.gameState });
   log('shot', file);
@@ -150,9 +253,9 @@ async function botStep(st) {
     else await page.keyboard.up('Shift');
     bot.boosting = wantBoost;
   }
-  if (!bot.passive && !holdForMaul && st.locked && Date.now() - bot.lastMissile > 1400) {
+  if (!bot.passive && !holdForMaul && st.locked && clock() - bot.lastMissile > 1400) {
     await page.keyboard.press('f');
-    bot.lastMissile = Date.now();
+    bot.lastMissile = clock();
   }
 }
 
@@ -161,20 +264,20 @@ async function botStep(st) {
 async function showcase(maxDist = 520, timeoutMs = 9000) {
   await releaseAll();
   await page.keyboard.down('Shift');
-  await sleep(1300);
+  await wait(1300);
   await shot('boost');
   await page.keyboard.up('Shift');
   // Ease off the throttle so the ship can turn onto a rock instead of orbiting it.
   await page.keyboard.down('KeyS');
-  await sleep(450);
+  await wait(450);
   await page.keyboard.up('KeyS');
-  const deadline = Date.now() + timeoutMs;
+  const deadline = clock() + timeoutMs;
   let fired = false;
   let picked = false;
   let boosting = false;
   let braking = false;
   let lastLog = 0;
-  while (Date.now() < deadline) {
+  while (clock() < deadline) {
     const a = await page.evaluate(([md, keep]) => window.__VW.asteroidAim(md, keep), [maxDist, picked]);
     const st = await state();
     if (st.gameState !== 'playing') break;
@@ -183,14 +286,14 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
       if (picked && !(await page.evaluate(() => window.__VW.showcaseRockAlive()))) {
         if (fired) await page.mouse.up();
         fired = false;
-        await sleep(300);
+        await wait(300);
         await shot('asteroid_split');
       }
       break;
     }
     picked = true;
-    if (Date.now() - lastLog > 1000) {
-      lastLog = Date.now();
+    if (clock() - lastLog > 1000) {
+      lastLog = clock();
       log(`showcase rock ${a.dist.toFixed(0)} m, nose ${a.noseErr.toFixed(3)}, firing ${fired}`);
     }
     // Boost in until close, so the split happens near the camera.
@@ -220,7 +323,7 @@ async function showcase(maxDist = 520, timeoutMs = 9000) {
       else await page.mouse.up();
       fired = want;
     }
-    await sleep(35);
+    await wait(35);
   }
   if (fired) await page.mouse.up();
   if (boosting) await page.keyboard.up('Shift');
@@ -232,6 +335,7 @@ function track(st) {
   if (key !== lastPhaseKey) {
     lastPhaseKey = key;
     timeline.push({ t: (Date.now() - t0) / 1000, gameState: st.gameState, phase: st.phase, wave: st.wave, objective: st.objective, player: st.player });
+    if (filmCdp) filmMarks.push({ label: `phase:${key}`, frame: filmFrame, t: filmFrame / FILM_FPS });
     log('phase', key, st.objective);
   }
 }
@@ -246,8 +350,8 @@ async function shotOnce(label, cond) {
 
 async function runMission({ passive = false } = {}) {
   bot.passive = passive;
-  const deadline = Date.now() + maxMinutes * 60000;
-  let phaseEnteredAt = Date.now();
+  const deadline = clock() + maxMinutes * 60000;
+  let phaseEnteredAt = clock();
   let lastPhase = '';
   let lastPerf = 0;
   let firstGeneratorLeft = -1;
@@ -255,17 +359,17 @@ async function runMission({ passive = false } = {}) {
   let criticalShot = false;
   let lastShield = -1;
   let dyingAt = 0;
-  while (Date.now() < deadline) {
+  while (clock() < deadline) {
     const st = await state();
     track(st);
     trackAudio(st);
     if (st.phase !== lastPhase) {
       lastPhase = st.phase;
-      phaseEnteredAt = Date.now();
+      phaseEnteredAt = clock();
     }
-    const inPhase = (Date.now() - phaseEnteredAt) / 1000;
-    if (Date.now() - lastPerf > 3000 && st.gameState === 'playing') {
-      lastPerf = Date.now();
+    const inPhase = (clock() - phaseEnteredAt) / 1000;
+    if (clock() - lastPerf > 3000 && st.gameState === 'playing') {
+      lastPerf = clock();
       perf.push({ t: (Date.now() - t0) / 1000, fps: st.fps, frameMs: st.frameMs, worstMs: Math.round(worstWindow), heapMB: st.heapMB, calls: st.render.calls, tris: st.render.triangles, phase: st.phase, quality: st.quality });
       worstWindow = 0;
     }
@@ -279,7 +383,7 @@ async function runMission({ passive = false } = {}) {
       const maulClose = (s) => s.target && s.target.kind === 'maul' && s.target.alive && s.target.hull > 40 && s.aim && s.aim.dist < 260 && s.aim.noseErr < 0.35;
       if (!once.has('maul_close') && maulClose(st)) {
         await releaseAll();
-        await sleep(350);
+        await wait(350);
         // Only if it is still a live bomber in view (a missile or wingman may have got it).
         if (maulClose(await state())) await shotOnce('maul_close', true);
       }
@@ -290,8 +394,8 @@ async function runMission({ passive = false } = {}) {
       if (st.capital && firstGeneratorLeft < 0 && st.phase === 'capital') firstGeneratorLeft = st.capital.generatorsLeft;
       await shotOnce('generator_attack', st.phase === 'capital' && st.capital?.state === 'active' && st.target && st.target.kind === 'generator' && st.aim && st.aim.dist < 650);
       // Wait for the banner to finish fading in.
-      if (!generatorDownAt && st.phase === 'capital' && st.capital && st.capital.generatorsLeft < firstGeneratorLeft) generatorDownAt = Date.now();
-      await shotOnce('generator_down', generatorDownAt > 0 && Date.now() - generatorDownAt > 250);
+      if (!generatorDownAt && st.phase === 'capital' && st.capital && st.capital.generatorsLeft < firstGeneratorLeft) generatorDownAt = clock();
+      await shotOnce('generator_down', generatorDownAt > 0 && clock() - generatorDownAt > 250);
       // The player's shield taking a hit (shimmer on the ship).
       if (st.player && lastShield >= 0) await shotOnce('shield_hit', st.player.shield < lastShield - 1 && st.player.shield > 10);
       if (st.player) lastShield = st.player.shield;
@@ -312,23 +416,23 @@ async function runMission({ passive = false } = {}) {
     }
     // Let the death camera pull back and the HUD fade first.
     if (st.gameState === 'dying') {
-      if (!dyingAt) dyingAt = Date.now();
-      await shotOnce('death_cam', Date.now() - dyingAt > 700);
+      if (!dyingAt) dyingAt = clock();
+      await shotOnce('death_cam', clock() - dyingAt > 700);
     } else dyingAt = 0;
     if (st.gameState === 'victory') {
       await releaseAll();
-      await sleep(1200);
+      await wait(1200);
       await shot('victory_screen');
       return 'victory';
     }
     if (st.gameState === 'gameover') {
       await releaseAll();
-      await sleep(900);
+      await wait(900);
       await shot('gameover_screen');
       return 'gameover';
     }
     await botStep(st);
-    await sleep(35);
+    await wait(35);
   }
   await releaseAll();
   return 'timeout';
@@ -336,48 +440,54 @@ async function runMission({ passive = false } = {}) {
 
 let outcome = 'none';
 try {
-  await sleep(1500);
+  // --nohud: a clean picture for trailer footage (the HUD and the targeting view are not drawn).
+  if (flag('nohud')) {
+    await page.addStyleTag({ content: '.hud { visibility: hidden !important; }' });
+    await page.evaluate(() => { window.__VW.game.hud.targetViewRect = () => null; });
+  }
+  if (film) await filmBegin();
+  await wait(1500);
   await shot('title');
   await page.click('.screen.show [data-action="launch"]');
   await page.mouse.move(cx, cy);
-  await sleep(300);
+  await wait(300);
   // Throttle up the way a player would (the ship starts at 55 %).
   await page.keyboard.down('KeyW');
-  await sleep(550);
+  await wait(550);
   await page.keyboard.up('KeyW');
   const locked = await page.evaluate(() => document.pointerLockElement !== null);
   log('pointer lock after launch:', locked);
 
   if (scenario === 'smoke') {
-    await sleep(3000);
+    await wait(3000);
     await shot('smoke_flight');
     await page.keyboard.press('Escape');
-    await sleep(600);
+    await wait(600);
     await shot('pause_menu');
     await page.click('.screen.show [data-action="resume"]');
-    await sleep(1500);
+    await wait(1500);
     outcome = (await state()).gameState;
   } else if (scenario === 'ui') {
     // Every menu screen: title (above), how to fly, settings, then in-flight pause and its settings.
     await page.mouse.move(cx, cy);
     await page.keyboard.press('Escape');
-    await sleep(700);
+    await wait(700);
     await shot('pause_menu');
     await page.click('.screen.show [data-action="howto"]');
-    await sleep(500);
+    await wait(500);
     await shot('howto');
     await page.click('.screen.show [data-action="back"]');
-    await sleep(300);
+    await wait(300);
     await page.click('.screen.show [data-action="settings"]');
-    await sleep(500);
+    await wait(500);
     await shot('settings');
     await page.click('.screen.show [data-action="back"]');
-    await sleep(300);
+    await wait(300);
     await page.click('.screen.show [data-action="resume"]');
-    await sleep(1200);
+    await wait(1200);
     outcome = (await state()).gameState;
   } else if (scenario === 'showcase') {
-    await sleep(1500);
+    await wait(1500);
     await showcase(900, 20000);
     outcome = (await state()).gameState;
   } else if (scenario === 'win') {
@@ -386,7 +496,7 @@ try {
     outcome = await runMission({ passive: true });
     if (outcome === 'gameover') {
       await page.click('.screen.show [data-action="retry"]');
-      await sleep(2500);
+      await wait(2500);
       const st = await state();
       log('after retry:', st.gameState, st.phase);
       await shot('after_retry');
@@ -401,6 +511,11 @@ try {
   } catch {}
 }
 
+if (filmEnc) {
+  // A few seconds on the end screen, then close the file.
+  await wait(3000).catch(() => undefined);
+  await filmEnd();
+}
 const finalState = await state().catch(() => null);
 const errors = consoleLog.filter((m) => m.type === 'error' || m.type === 'pageerror');
 const warnings = consoleLog.filter((m) => m.type === 'warning');

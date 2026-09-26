@@ -281,3 +281,19 @@ Newest last. Each entry: date, decision, reason.
   carrier's art direction; five rounds in a row with nothing major, the description changing
   each time rather than the rating). Deliverables: README.md, screenshots/ (6 full-HD
   player-view shots from the final build), docs/progress/m5-polish.
+- 2026-09-25: Version 1.0.0 released (tag v1.0.0). Public site on Cloudflare Pages, project
+  `voidwing` (https://voidwing.pages.dev): the landing page in `site/` at `/`, the game built with
+  base `/play/` at `/play/`. `npm run site` builds `site-dist/`, `npm run site -- --deploy`
+  deploys it. The project was created as a classic Pages project (`wrangler pages project create
+  --force`, once) because wrangler 4.141 now delegates new Pages projects to Workers.
+- 2026-09-25: Film mode (`playtest --film`): an init script replaces requestAnimationFrame and
+  performance.now with a virtual clock; the script steps one 1/60 s frame, captures it over CDP
+  (JPEG 94) and pipes it into ffmpeg-static (x264 CRF 14). The bot's timers run on game time and
+  CSS animations are slowed to the capture rate, so footage is a smooth 60 fps however slowly it
+  is captured (about 15 frames a real second at 1080p). Screenshot labels are saved with frame
+  numbers; `scripts/make-media.mjs` cuts clips, posters, GIFs and chapters.json at those labels.
+  `--nohud` hides the HUD and targeting view for the landing page's hero reel.
+- 2026-09-25: README GIFs are 560 px, 12 fps, 4 s, 128-colour Bayer palettes (2 to 4 MB each);
+  landing page clips are 720p H.264 MP4s; the uncut run is capped at 850 kbit/s to stay under the
+  25 MiB Cloudflare Pages file limit. Playwright's bundled Chromium cannot decode H.264, so check
+  the page's video in real Chrome, Edge or Firefox.

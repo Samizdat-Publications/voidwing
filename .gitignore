@@ -11,3 +11,5 @@ blender_scripts/__pycache__/
 # Local env
 .env
 .env.*
+site-dist/
+.wrangler/

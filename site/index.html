@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VOID WING: space combat in your browser</title>
+<meta name="description" content="Fly a starfighter through the Tarsus asteroid belt, clear three waves of Hegemony fighters, then break the carrier Leviathan. Free, in your browser.">
+<meta name="theme-color" content="#060a13">
+<meta property="og:title" content="VOID WING">
+<meta property="og:description" content="Space combat in your browser. Three waves of fighters, then a carrier behind its shield.">
+<meta property="og:image" content="media/og.jpg">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 L29 26 L16 20 L3 26 Z' fill='%2352d9ff'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/chakra-petch-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="media/hero.jpg" as="image">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<a class="skip" href="#mission">Skip to the mission</a>
+
+<header class="hero">
+  <video class="hero-video" id="hero-video" muted loop playsinline preload="metadata" poster="media/hero.jpg" aria-hidden="true">
+    <source src="media/hero.mp4" type="video/mp4">
+  </video>
+  <div class="hero-shade" aria-hidden="true"></div>
+  <nav class="bar" aria-label="Site">
+    <a class="mark" href="#top" id="top">VOID <span>WING</span></a>
+    <div class="bar-links">
+      <a href="#mission">The mission</a>
+      <a href="#recorder">Full run</a>
+      <a href="#controls">Controls</a>
+      <a href="#making">How it was made</a>
+      <a class="bar-play" href="play/">Play</a>
+    </div>
+  </nav>
+  <div class="hero-copy">
+    <p class="kicker">Tarsus belt, Hegemony war</p>
+    <h1 class="logo">VOID <span>WING</span></h1>
+    <p class="pitch">Fly a starfighter through an asteroid belt, clear three waves of Hegemony fighters, then break a carrier that hides behind its shield.</p>
+    <div class="cta">
+      <a class="btn btn-play" href="play/">Play in your browser <kbd>free</kbd></a>
+      <a class="btn btn-ghost" href="#recorder">Watch a full run</a>
+    </div>
+    <p class="fine">Mouse and keyboard. Chrome, Edge or Firefox on a desktop or laptop. A run takes about ten minutes.</p>
+  </div>
+  <button class="hero-toggle" id="hero-toggle" type="button" aria-pressed="false">Pause video</button>
+</header>
+
+<main>
+
+<section class="mission" id="mission" aria-labelledby="mission-h">
+  <div class="wrap">
+    <div class="section-head">
+      <h2 id="mission-h">The mission</h2>
+      <p>Every clip on this page comes from one recorded run of the finished game, captured frame by frame at 60 fps while a test script flew it with real mouse and keyboard input. The time beside each clip is how far into that run it happens.</p>
+    </div>
+
+    <ol class="stops" id="stops">
+      <li class="stop" data-mark="launch" style="--c: var(--friend)">
+        <p class="stop-time"></p>
+        <figure class="panel"><video data-inview muted loop playsinline preload="none" poster="media/launch.jpg" aria-label="The Kestrel launching with two wingmen beside it."><source src="media/launch.mp4" type="video/mp4"></video></figure>
+        <div class="stop-text">
+          <p class="who">Void One</p>
+          <h3>Launch with your wingmen</h3>
+          <p>You fly the KV-9 Kestrel with Void Two and Void Three on your wings. Anything marked in cyan is on your side.</p>
+        </div>
+      </li>
+      <li class="stop" data-mark="missile_lock" style="--c: var(--good)">
+        <p class="stop-time"></p>
+        <figure class="panel"><video data-inview muted loop playsinline preload="none" poster="media/lock.jpg" aria-label="The lock frame closing on a target until the green LOCK tag appears, then a missile launch."><source src="media/lock.mp4" type="video/mp4"></video></figure>
+        <div class="stop-text">
+          <p class="who">Wave 1</p>
+          <h3>Hold it centred, then fire</h3>
+          <p>The first Razors arrive. Keep one near the middle of the screen and the missile lock builds by itself. When the tone goes solid and the tag turns green, press F or the right button.</p>
+        </div>
+      </li>
+      <li class="stop" data-mark="asteroid_split" style="--c: var(--warn)">
+        <p class="stop-time"></p>
+        <figure class="panel"><video data-inview muted loop playsinline preload="none" poster="media/asteroid.jpg" aria-label="An asteroid breaking into glowing pieces under laser fire."><source src="media/asteroid.mp4" type="video/mp4"></video></figure>
+        <div class="stop-text">
+          <p class="who">Between waves</p>
+          <h3>Rocks break, and so do you</h3>
+          <p>Asteroids split into smaller rocks when you shoot them. Flying into one costs shields and hull, though the ship steers around the worst of it.</p>
+        </div>
+      </li>
+      <li class="stop" data-mark="dogfight_close" style="--c: var(--foe)">
+        <p class="stop-time"></p>
+        <figure class="panel"><video data-inview muted loop playsinline preload="none" poster="media/dogfight.jpg" aria-label="Laser fire on a Razor fighter at close range."><source src="media/dogfight.mp4" type="video/mp4"></video></figure>
+        <div class="stop-text">
+          <p class="who">Wave 2</p>
+          <h3>Razors come to you</h3>
+          <p>Razor dogfighters chase you, fire where you are going and break off after each pass. Put the white cross on the yellow lead dot and hold the trigger.</p>
+        </div>
+      </li>
+      <li class="stop" data-mark="maul_close" style="--c: var(--foe)">
+        <p class="stop-time"></p>
+        <figure class="panel"><video data-inview muted loop playsinline preload="none" poster="media/bombers.jpg" aria-label="A Maul bomber head on, bracketed in red, with its twin engine pods."><source src="media/bombers.mp4" type="video/mp4"></video></figure>
+        <div class="stop-text">
+          <p class="who">Wave 2</p>
+          <h3>Bombers in pairs</h3>
+          <p>Maul bombers attack from two sides at once with long strafing runs of heavy plasma. A double bar over the red bracket marks one.</p>
+        </div>
+      </li>
+      <li class="stop" data-mark="capital_warp" style="--c: var(--objective)">
+        <p class="stop-time"></p>
+        <figure class="panel"><video data-inview muted loop playsinline preload="none" poster="media/carrier.jpg" aria-label="The carrier Leviathan dropping out of a jump, wrapped in its shield."><source src="media/carrier.mp4" type="video/mp4"></video></figure>
+        <div class="stop-text">
+          <p class="who">After wave 3</p>
+          <h3>The Leviathan jumps in</h3>
+          <p>A Hegemony carrier arrives behind a shield your guns cannot cross. Its flak turrets reach more than a kilometre.</p>
+        </div>
+      </li>
+      <li class="stop" data-mark="generator_down" style="--c: var(--objective)">
+        <p class="stop-time"></p>
+        <figure class="panel"><video data-inview muted loop playsinline preload="none" poster="media/generators.jpg" aria-label="A shield generator on its pylon exploding under fire."><source src="media/generators.mp4" type="video/mp4"></video></figure>
+        <div class="stop-text">
+          <p class="who">Objective</p>
+          <h3>Four generators, outside the bubble</h3>
+          <p>The shield generators sit on pylons beyond the shield. If a tag says the shield is in the way, swing out until the shot is clear.</p>
+        </div>
+      </li>
+      <li class="stop" data-mark="finale_chain" style="--c: var(--objective)">
+        <p class="stop-time"></p>
+        <figure class="panel"><video data-inview muted loop playsinline preload="none" poster="media/breakup.jpg" aria-label="The carrier breaking into three sections in a chain of explosions, ending in a white flash."><source src="media/breakup.mp4" type="video/mp4"></video></figure>
+        <div class="stop-text">
+          <p class="who">Finale</p>
+          <h3>The chain reaction</h3>
+          <p>With the last generator gone, the reactor tears the carrier apart in three pieces. Then the mission report: time, kills, accuracy and your rank.</p>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="recorder" id="recorder" aria-labelledby="recorder-h">
+  <div class="wrap">
+    <div class="section-head">
+      <h2 id="recorder-h">Watch a full run</h2>
+      <p>The whole mission, uncut, from the title screen to the victory report. The test pilot flies with invulnerability on, so it always makes it home: you will not. Pick a moment on the flight recorder to jump to it.</p>
+    </div>
+    <figure class="panel panel-friend player">
+      <video id="run" controls playsinline preload="none" poster="media/mission.jpg">
+        <source src="media/mission.mp4" type="video/mp4">
+      </video>
+    </figure>
+    <div class="track" id="track" role="group" aria-label="Flight recorder: jump to a moment">
+      <div class="track-rail"><div class="track-fill" id="track-fill"></div></div>
+      <div class="track-marks" id="track-marks"></div>
+    </div>
+    <p class="now" id="now" aria-live="polite"></p>
+  </div>
+</section>
+
+<section class="controls" id="controls" aria-labelledby="controls-h">
+  <div class="wrap">
+    <div class="section-head">
+      <h2 id="controls-h">Controls</h2>
+      <p>Point where you want to go. The ship turns toward the white ring; the white cross shows where your guns point. Put the cross on the yellow dot to hit a moving target.</p>
+    </div>
+    <div class="deck">
+      <div class="panel panel-friend keys">
+        <h3>Keyboard</h3>
+        <div class="keyrow">
+          <span class="key k-tab">Tab</span><span class="key">Q</span><span class="key on">W</span><span class="key">E</span><span class="key">R</span><span class="key on-lock">F</span>
+        </div>
+        <div class="keyrow shift1">
+          <span class="key on">A</span><span class="key on">S</span><span class="key on">D</span>
+        </div>
+        <div class="keyrow">
+          <span class="key k-shift on-boost">Shift</span><span class="key k-space on-boost">Space</span><span class="key">Esc</span><span class="key">P</span>
+        </div>
+        <dl class="legend">
+          <div><dt>W / S</dt><dd>Throttle up and down</dd></div>
+          <div><dt>A / D</dt><dd>Roll left and right</dd></div>
+          <div><dt>Shift or Space</dt><dd>Boost, while the boost meter lasts</dd></div>
+          <div><dt>F</dt><dd>Fire a missile once the green LOCK tag shows</dd></div>
+          <div><dt>Tab</dt><dd>Next target</dd></div>
+          <div><dt>Esc or P</dt><dd>Pause, settings and the flight guide</dd></div>
+        </dl>
+      </div>
+      <div class="panel panel-friend mouse">
+        <h3>Mouse</h3>
+        <svg class="mouse-art" viewBox="0 0 120 170" aria-hidden="true">
+          <rect x="10" y="10" width="100" height="150" rx="50" class="m-body"/>
+          <path d="M10 60 V60 A50 50 0 0 1 58 10 V70 H10 Z" class="m-left"/>
+          <path d="M110 60 A50 50 0 0 0 62 10 V70 H110 Z" class="m-right"/>
+          <rect x="55" y="26" width="10" height="26" rx="5" class="m-wheel"/>
+        </svg>
+        <dl class="legend">
+          <div><dt>Move</dt><dd>Steer. The mouse is captured once you click into the game</dd></div>
+          <div><dt>Left button</dt><dd>Lasers, hold to keep firing</dd></div>
+          <div><dt>Right button</dt><dd>Missile, same as F</dd></div>
+        </dl>
+      </div>
+      <div class="panel panel-objective colours">
+        <h3>Reading the screen</h3>
+        <ul class="swatches">
+          <li><i style="--c: var(--friend)"></i>You and your two wingmen</li>
+          <li><i style="--c: var(--foe)"></i>Enemies</li>
+          <li><i style="--c: var(--objective)"></i>Objectives, like the carrier's generators</li>
+          <li><i style="--c: var(--warn)"></i>Danger to you: warnings, damage, incoming fire</li>
+          <li><i style="--c: var(--good)"></i>Your missile lock</li>
+          <li><i style="--c: var(--lead)"></i>The lead dot: where to shoot</li>
+        </ul>
+        <p class="tip">Shields recharge a few seconds after you stop taking hits. Hull damage does not. If you die, Retry starts you again at the wave you were on.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="making" id="making" aria-labelledby="making-h">
+  <div class="wrap">
+    <div class="section-head">
+      <h2 id="making-h">How it was made</h2>
+      <p>VOID WING was built by Claude (Opus 5.5) from a single prompt, as the first of a five-game test. Nothing in it was downloaded: every model is a Blender Python script, every texture is baked or generated in a shader, and every sound, including the music, is synthesized in the browser.</p>
+    </div>
+
+    <ol class="builds">
+      <li>
+        <figure><img src="media/progress-m1.jpg" width="640" height="360" loading="lazy" alt="Milestone 1: grey boxes and flat-shaded shapes flying in a black void."></figure>
+        <h3><span>1</span> Greybox</h3>
+        <p>The whole loop in primitive shapes: fly, shoot, win and lose.</p>
+        <p class="rounds">4 critic rounds</p>
+      </li>
+      <li>
+        <figure><img src="media/progress-m2.jpg" width="640" height="360" loading="lazy" alt="Milestone 2: the modelled ships and asteroids against a purple nebula."></figure>
+        <h3><span>2</span> Assets</h3>
+        <p>Ships, carrier, asteroids and missiles modelled by script in Blender and exported to glTF.</p>
+        <p class="rounds">2 critic rounds</p>
+      </li>
+      <li>
+        <figure><img src="media/progress-m3.jpg" width="640" height="360" loading="lazy" alt="Milestone 3: laser bolts, engine trails and bloom in a dogfight."></figure>
+        <h3><span>3</span> Feel</h3>
+        <p>Camera, particles, trails, screen shake, hit feedback, sound and music.</p>
+        <p class="rounds">6 critic rounds</p>
+      </li>
+      <li>
+        <figure><img src="media/progress-m4.jpg" width="640" height="360" loading="lazy" alt="Milestone 4: the finished HUD with the target panel and targeting view."></figure>
+        <h3><span>4</span> Interface</h3>
+        <p>Title, HUD, pause, failure and victory screens in one designed look.</p>
+        <p class="rounds">11 critic rounds</p>
+      </li>
+      <li>
+        <figure><img src="media/progress-m5.jpg" width="640" height="360" loading="lazy" alt="Milestone 5: the rebuilt carrier Leviathan with its generator pylons."></figure>
+        <h3><span>5</span> Polish</h3>
+        <p>A steady 60 fps, a rebuilt carrier, clearer targets at range, no console errors.</p>
+        <p class="rounds">9 critic rounds</p>
+      </li>
+    </ol>
+
+    <div class="loop panel panel-friend">
+      <h3>The critic loop</h3>
+      <p>After every milestone a script played the game headless and saved screenshots from the player's camera. A separate reviewer that saw only those screenshots and a one-paragraph pitch, never the code, listed the five worst problems a player would notice. They were fixed and the loop ran again, 32 rounds in all, until the worst remaining problem was minor.</p>
+    </div>
+
+    <dl class="facts">
+      <div><dt>Stack</dt><dd>Vite, TypeScript and Three.js on WebGL2, with an HDR bloom and tone-mapping chain</dd></div>
+      <div><dt>Models</dt><dd>One Blender Python script per asset family, rebuilt with <code>npm run assets</code></dd></div>
+      <div><dt>Audio</dt><dd>Web Audio synthesis: effects and a music sequencer, no sound files</dd></div>
+      <div><dt>Performance</dt><dd>60 fps at 1080p on a desktop GPU; Auto graphics steps down on slower machines</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="launch" aria-labelledby="launch-h">
+  <div class="wrap">
+    <h2 id="launch-h">Void One, you are cleared to launch.</h2>
+    <a class="btn btn-play" href="play/">Play in your browser <kbd>free</kbd></a>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <p>VOID WING 1.0. Game code and assets made for this project. Chakra Petch is licensed under the SIL Open Font License 1.1.</p>
+    <p><a href="play/">Play</a> <a href="#top">Back to the top</a></p>
+  </div>
+</footer>
+
+<script src="site.js" defer></script>
+</body>
+</html>

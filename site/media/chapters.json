@@ -1,0 +1,88 @@
+{
+  "duration": 201.5,
+  "marks": {
+    "title": 1.5,
+    "launch": 3.9,
+    "wave1_combat": 11.8,
+    "missile_lock": 11.9,
+    "shield_hit": 11.9,
+    "boost": 28.8,
+    "asteroid_split": 34.8,
+    "wave_cleared": 34.8,
+    "dogfight_close": 42.3,
+    "wave2_bombers": 48,
+    "maul_close": 50.7,
+    "wave3_swarm": 76.3,
+    "capital_warp": 103.9,
+    "capital_arrival": 107.1,
+    "generator_attack": 111.3,
+    "generator_down": 112.5,
+    "hull_critical": 121.5,
+    "finale_chain": 190.5,
+    "finale_blast": 194.2,
+    "victory_screen": 198.4,
+    "asteroid_split_showcase": 9.6
+  },
+  "recorder": [
+    {
+      "t": 3.9,
+      "label": "Launch",
+      "kind": "friend",
+      "note": "Void One and two wingmen leave the carrier group."
+    },
+    {
+      "t": 11.9,
+      "label": "Wave 1 and the first lock",
+      "kind": "good",
+      "note": "Two Razors, then two more. The lock builds while the target stays centred."
+    },
+    {
+      "t": 34.8,
+      "label": "Wave 1 cleared, a rock splits",
+      "kind": "warn",
+      "note": "Shot rocks break into smaller ones."
+    },
+    {
+      "t": 42.3,
+      "label": "Wave 2: Razors and Mauls",
+      "kind": "foe",
+      "note": "A Razor at close range; the bombers come in pincer pairs."
+    },
+    {
+      "t": 50.7,
+      "label": "A Maul up close",
+      "kind": "foe",
+      "note": "Heavy plasma on long strafing runs."
+    },
+    {
+      "t": 76.3,
+      "label": "Wave 3",
+      "kind": "foe",
+      "note": "Razors and Mauls together."
+    },
+    {
+      "t": 103.9,
+      "label": "The Leviathan jumps in",
+      "kind": "objective",
+      "note": "The carrier arrives behind its shield."
+    },
+    {
+      "t": 112.5,
+      "label": "First generator down",
+      "kind": "objective",
+      "note": "One of four, on pylons outside the shield bubble."
+    },
+    {
+      "t": 190.5,
+      "label": "Chain reaction",
+      "kind": "objective",
+      "note": "The last generator goes and the carrier comes apart."
+    },
+    {
+      "t": 198.4,
+      "label": "Mission report",
+      "kind": "friend",
+      "note": "Time, kills, accuracy and a rank."
+    }
+  ]
+}
