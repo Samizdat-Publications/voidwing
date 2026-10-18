@@ -1,0 +1,33 @@
+{
+  "name": "VOID WING",
+  "repo": "voidwing",
+  "pitch": "Space combat in your browser: fly a starfighter with two wingmen through an asteroid belt and bring down the carrier Leviathan.",
+  "status": "v1",
+  "version": "1.0.0",
+  "kind": "game",
+  "started": "2026-09-24",
+  "updated": "2026-09-25",
+  "tech": [
+    "TypeScript",
+    "Three.js",
+    "Blender",
+    "Web Audio"
+  ],
+  "links": {
+    "landing": "https://voidwing.pages.dev",
+    "play": "https://voidwing.pages.dev/play/",
+    "devlog": ""
+  },
+  "hero": {
+    "gif": "docs/media/dogfight.gif",
+    "poster": "site/media/hero.jpg",
+    "clip": "site/media/hero.mp4"
+  },
+  "credits": [
+    {
+      "what": "Chakra Petch font",
+      "who": "Cadson Demak (via @fontsource)",
+      "licence": "SIL OFL 1.1"
+    }
+  ]
+}

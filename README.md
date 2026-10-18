@@ -1,5 +1,7 @@
 # VOID WING
 
+![Status: v1.0](https://img.shields.io/badge/status-v1.0-2ea043)
+
 **Space combat in your browser.** Fly a KV-9 Kestrel starfighter, call sign Void One, through the
 Tarsus asteroid belt with two AI wingmen. Clear three waves of Hegemony fighters, then the carrier
 Leviathan jumps in behind an energy shield. Knock out its four shield generators and get clear
@@ -226,3 +228,5 @@ public site on Cloudflare Pages.
 
 The game code and assets in this repository were made for this project. Chakra Petch is licensed
 under the SIL Open Font License 1.1.
+
+Code is MIT (see [LICENSE](LICENSE)).
